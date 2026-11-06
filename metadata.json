@@ -1,0 +1,6 @@
+{
+  "name": "Numivo - Numéros Virtuels & SMS",
+  "description": "Plateforme internationale d'achat de numéros virtuels avec paiement Mobile Money, cartes bancaires et portefeuille multi-devises.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
