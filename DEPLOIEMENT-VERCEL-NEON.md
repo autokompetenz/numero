@@ -1,25 +1,25 @@
 # Déploiement Vercel + Neon
 
-Guide pas à pas pour déployer Numivo en **deux projets Vercel** (front + API)
-reliés à une base **Neon PostgreSQL**. La procédure décrite ici correspond au
-déploiement de **staging** actuellement en ligne :
+Guide pas à pas pour déployer Numivo en **un seul projet Vercel** (front Vite +
+API Express) relié à une base **Neon PostgreSQL**. La procédure décrit le
+déploiement actuellement en ligne :
 
 | Composant | URL | Projet Vercel |
 | --- | --- | --- |
-| Front React/Vite | <https://numero-pearl.vercel.app> | `numero` |
-| API Express | <https://numero-api.vercel.app> | `numero-api` |
+| Front React/Vite + API Express | <https://numero-pearl.vercel.app> | `numero` |
 
-Le front proxifie `/api/*` vers l'API via un rewrite Vercel. Le navigateur ne
-parle donc qu'au domaine du front : le cookie de refresh reste **first-party**
-(`SameSite=Lax`) et aucun réglage CORS cross-origin n'est nécessaire côté
-client.
+Le front et l'API partagent la même origine : le cookie de refresh reste
+**first-party** (`SameSite=Lax`) et aucun CORS cross-origin n'est nécessaire.
 
 ```
 Navigateur ──► numero-pearl.vercel.app
-                    │  /api/*  (rewrite Vercel)
-                    ▼
-              numero-api.vercel.app ──► Neon PostgreSQL (pooled)
+                    ├── /            → build Vite (public/)
+                    ├── /assets/*    → fichiers statiques
+                    └── /api/*       → Express ──► Neon PostgreSQL (pooled)
 ```
+
+> L'ancien projet séparé `numero-api` n'est plus utilisé. Il peut être supprimé
+> depuis le dashboard Vercel une fois le projet fusionné validé.
 
 ---
 
@@ -45,25 +45,12 @@ Navigateur ──► numero-pearl.vercel.app
 2. Récupérer la chaîne de connexion **pooled** (l'hôte contient `-pooler`).
 3. En déduire la chaîne **directe** en retirant `-pooler` de l'hôte.
 
-Exemple de variables :
-
 ```dotenv
 # Connexion applicative (pooler PgBouncer de Neon)
 DATABASE_URL=postgresql://USER:PASSWORD@ep-xxx-pooler.REGION.aws.neon.tech/neondb?sslmode=require&channel_binding=require
 
 # Connexion directe, utilisée par Prisma Migrate
 DIRECT_URL=postgresql://USER:PASSWORD@ep-xxx.REGION.aws.neon.tech/neondb?sslmode=require&channel_binding=require
-```
-
-`DATABASE_URL` est utilisée par l'API à l'exécution ; `DIRECT_URL` par les
-migrations. Le schéma Prisma déclare bien les deux :
-
-```prisma
-datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
-}
 ```
 
 ### 2.2 Appliquer le schéma
@@ -89,61 +76,76 @@ Le seed est idempotent. Il crée :
 
 > Le seed de staging est donc lancé **en local** (avec `NODE_ENV=development`
 > dans le `.env`), pas depuis une fonction Vercel où `NODE_ENV=production`.
-> En staging, le catalogue mock est volontairement conservé pour permettre la
-> recette. Avant la mise en live, purger les offres de démonstration et lancer
-> une synchronisation réelle Ultra SMS.
-
-Vérification rapide :
-
-```bash
-psql "$DIRECT_URL" -c 'select count(*) from "CatalogItem";'
-```
+> Avant la mise en live, purger les offres de démonstration et lancer une
+> synchronisation réelle Ultra SMS.
 
 ---
 
-## 3. Projet API (`numero-api`)
+## 3. Projet Vercel unique (`numero`)
 
-### 3.1 Créer et lier le projet
+### 3.1 Structure
 
-```bash
-cd server
-vercel link          # créer le projet « numero-api »
-vercel --prod --yes
-```
-
-Paramètres du projet :
-
-| Réglage | Valeur |
+| Fichier | Rôle |
 | --- | --- |
-| Framework Preset | **Express** |
-| Root Directory | laisser vide (déploiement lancé depuis `server/`) |
-| Build Command | détectée (`npm run vercel-build`) |
-| Output Directory | laisser vide |
-| Node.js | 22.x |
-
-Le fichier `server/vercel.json` force l'installation des dépendances de
-développement (nécessaires à `prisma generate`) et déclare le cron :
+| `app.ts` | Point d'entrée du preset Express : réexporte `server/src/app.ts`. |
+| `server/` | API Express, Prisma et migrations. |
+| `src/` | Front React. |
+| `static/` | Fichiers copiés tels quels par Vite. |
+| `public/` | **Généré** au build (front compilé), ignoré par Git. |
+| `vercel.json` | Preset Express, commandes de build, rewrite SPA, cron. |
 
 ```json
 {
-  "installCommand": "npm install --include=dev",
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "express",
+  "installCommand": "npm install --include=dev && npm --prefix server install --include=dev",
+  "buildCommand": "npm run build",
+  "rewrites": [
+    { "source": "/((?!api|assets/).*)", "destination": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/api/:path*",
+      "headers": [{ "key": "Cache-Control", "value": "no-store" }]
+    }
+  ],
   "crons": [{ "path": "/api/cron/poller", "schedule": "0 3 * * *" }]
 }
 ```
 
-`server/.vercelignore` exclut `.env`, `dist`, les tests et la documentation du
-paquet envoyé à Vercel. Sans cela, le fichier `.env` local part dans la
-fonction serverless.
+- `npm run build` exécute `vite build` (sortie dans `public/`) puis
+  `prisma generate`.
+- Le rewrite sert l'application React pour toutes les routes **sauf**
+  `/api/*` et `/assets/*` (negative lookahead).
+- `express.static()` est ignoré par Vercel : les fichiers de `public/**` sont
+  servis par le CDN.
 
-### 3.2 Variables d'environnement
+### 3.2 Créer et lier le projet
+
+```bash
+vercel link          # créer ou lier le projet « numero »
+```
+
+Paramètres :
+
+| Réglage | Valeur |
+| --- | --- |
+| Framework Preset | **Express** (forcé dans `vercel.json`) |
+| Root Directory | racine du dépôt |
+| Install Command | `npm install --include=dev && npm --prefix server install --include=dev` |
+| Build Command | `npm run build` |
+| Output Directory | `public` |
+| Node.js | 22.x |
+
+### 3.3 Variables d'environnement
 
 À définir dans **Vercel → Project → Settings → Environment Variables**
-(environnement *Production*, puisque le staging est un déploiement de
-production avec `APP_ENV=staging`) :
+(Production, Preview et Development). Le staging est un déploiement de
+production avec `APP_ENV=staging`.
 
 | Variable | Staging | Live |
 | --- | --- | --- |
-| `NODE_ENV` | `production` | `production` |
+| `NODE_ENV` | `production` (forcé) | `production` (forcé) |
 | `APP_ENV` | `staging` | `production` |
 | `DATABASE_URL` | URL Neon **pooled** | URL Neon **pooled** |
 | `DIRECT_URL` | URL Neon **directe** | URL Neon **directe** |
@@ -152,8 +154,8 @@ production avec `APP_ENV=staging`) :
 | `REFRESH_TOKEN_TTL_DAYS` | `7` | `7` |
 | `COOKIE_SECURE` | `true` | `true` |
 | `TRUST_PROXY` | `1` | `1` |
-| `APP_URL` | `https://numero-api.vercel.app` | URL API publique |
-| `FRONTEND_URL` | `https://numero-pearl.vercel.app` | URL front publique |
+| `APP_URL` | `https://numero-pearl.vercel.app` | URL publique |
+| `FRONTEND_URL` | `https://numero-pearl.vercel.app` | URL publique |
 | `CORS_ORIGINS` | URL exacte du front | URL exacte du front |
 | `ADMIN_EMAIL` | `admin@numivo.local` | adresse réelle |
 | `ADMIN_PASSWORD` | mot de passe ≥ 12 caractères | idem, distinct |
@@ -163,7 +165,7 @@ production avec `APP_ENV=staging`) :
 | `ULTRASMS_MODE` | `mock` | `live` |
 | `ULTRASMS_API_KEY` | vide | clé réelle |
 | `ULTRASMS_WEBHOOK_SECRET` | vide | secret du callback |
-| `ULTRASMS_CALLBACK_URL` | vide | `https://<api>/api/webhooks/ultrasms` |
+| `ULTRASMS_CALLBACK_URL` | vide | `https://numero-pearl.vercel.app/api/webhooks/ultrasms` |
 | `PAYMENTS_MODE` | `mock` | `live` |
 | `FEDAPAY_PUBLIC_KEY` | vide | clé réelle |
 | `FEDAPAY_SECRET_KEY` | vide | clé réelle |
@@ -181,21 +183,24 @@ production avec `APP_ENV=staging`) :
 | `LOG_LEVEL` | `info` | `info` |
 | `SMS_RETENTION_DAYS` | `30` | `30` |
 
-En CLI, par exemple :
+En CLI :
 
 ```bash
-cd server
 printf '%s' "$VALUE" | vercel env add NOM_DE_LA_VARIABLE production
 vercel --prod --yes      # redéployer après ajout/modification
 ```
 
-> `NODE_ENV` est forcé à `production` par Vercel. C'est `APP_ENV` (et
-> `VERCEL_ENV=preview`) qui distingue staging et live. Les garde-fous
-> n'autorisent `mock` que hors environnement live.
+Pour repartir d'un projet existant, `scripts/push-merged-env.sh` copie les
+variables applicatives d'un export `vercel env pull` vers les trois
+environnements du projet fusionné.
 
-### 3.3 Garde-fous au démarrage
+> `NODE_ENV` est forcé à `production` par Vercel. C'est `APP_ENV` qui distingue
+> staging et live. Les garde-fous n'autorisent `mock` que hors environnement
+> live.
 
-L'API refuse de démarrer si l'une des conditions suivantes n'est pas remplie :
+### 3.4 Garde-fous au démarrage
+
+L'API refuse de démarrer si :
 
 - en live : `PAYMENTS_MODE=live` et `ULTRASMS_MODE=live` ;
 - en production : `COOKIE_SECURE=true`, `JWT_ACCESS_SECRET` ≥ 64 caractères,
@@ -205,136 +210,53 @@ L'API refuse de démarrer si l'une des conditions suivantes n'est pas remplie :
 - hors mode mock : `FEDAPAY_SECRET_KEY` présent (et son webhook secret en
   production).
 
-En cas d'erreur, le build/déploiement échoue avec la liste des variables
-manquantes dans les logs Vercel.
-
 ---
 
-## 4. Projet front (`numero`)
-
-### 4.1 Créer et lier le projet
-
-Depuis la racine du dépôt :
+## 4. Déployer
 
 ```bash
-vercel link          # créer le projet « numero »
+# Prévisualisation (recommandé avant la production)
+vercel deploy --yes
+
+# Vérifier l'URL de preview, puis promouvoir le build testé
+vercel promote <url-de-previsualisation> --yes
+
+# Ou directement en production
 vercel --prod --yes
 ```
 
-Paramètres :
-
-| Réglage | Valeur |
-| --- | --- |
-| Framework Preset | **Vite** |
-| Root Directory | racine du dépôt |
-| Build Command | `npm run build` (détectée) |
-| Output Directory | `dist` (détectée) |
-| Node.js | 22.x |
-
-Aucune variable d'environnement n'est nécessaire. En particulier, **ne pas
-définir `VITE_API_URL`** : le front doit appeler `/api` sur sa propre origine
-pour que le rewrite et le cookie first-party fonctionnent.
-
-### 4.2 Rewrite `/api` et fallback SPA
-
-`vercel.json` à la racine :
-
-```json
-{
-  "rewrites": [
-    {
-      "source": "/api/:path*",
-      "destination": "https://numero-api.vercel.app/api/:path*"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
-  ],
-  "headers": [
-    {
-      "source": "/api/:path*",
-      "headers": [
-        { "key": "x-vercel-enable-rewrite-caching", "value": "0" }
-      ]
-    }
-  ]
-}
-```
-
-- Le premier rewrite envoie les appels API vers le projet `numero-api`.
-- Le second sert l'application React pour toutes les routes (SPA).
-- L'en-tête `x-vercel-enable-rewrite-caching: 0` empêche Vercel de mettre en
-  cache les réponses d'API. L'API renvoie de toute façon `Cache-Control:
-  no-store`.
-
-Si le domaine de l'API change, mettre à jour **ce fichier** puis redéployer le
-front. C'est le seul endroit où l'URL de l'API est codée en dur.
-
-### 4.3 Cookie de session
-
-Le flux d'authentification utilise :
-
-- un access token JWT renvoyé dans le corps et conservé en mémoire ;
-- un refresh token dans un cookie `HttpOnly`, `Secure`, `SameSite=Lax`,
-  limité à `Path=/api/auth`.
-
-Comme le navigateur reste sur le domaine du front, le cookie est first-party.
-Un appel direct du front vers `numero-api.vercel.app` casserait ce mécanisme
-(cookie tiers) : c'est pourquoi le proxy `/api` est obligatoire.
+> `vercel deploy --prebuilt` échoue avec `ENOENT … readlink '.env'` à cause du
+> lien symbolique `server/.env` : utiliser un déploiement normal.
 
 ---
 
-## 5. Ordre de déploiement
-
-1. **Neon** : créer la base, appliquer `prisma migrate deploy`, lancer le seed.
-2. **API** : créer le projet `numero-api`, renseigner les variables, déployer.
-3. **Front** : créer le projet `numero`, déployer.
-4. **Vérifier** : santé, proxy, login, cookie, catalogue.
+## 5. Vérifications après déploiement
 
 ```bash
-# 1. Base
-cd server && npx prisma migrate deploy && npm run db:seed && cd ..
+BASE=https://numero-pearl.vercel.app
 
-# 2. API
-cd server && vercel --prod --yes && cd ..
-
-# 3. Front
-vercel --prod --yes
-```
-
----
-
-## 6. Vérifications après déploiement
-
-```bash
-FRONT=https://numero-pearl.vercel.app
-API=https://numero-api.vercel.app
-
-# Santé directe de l'API
-curl -s "$API/api/health" | jq
+# Santé (front + API + base)
+curl -s "$BASE/api/health" | jq
 # { "status": "ok", "database": "up", "paymentsMode": "mock", ... }
 
-# Santé via le proxy du front
-curl -s "$FRONT/api/health" | jq
+# Front et fallback SPA
+curl -s -o /dev/null -w '%{http_code} %{content_type}\n' "$BASE/"
+curl -s -o /dev/null -w '%{http_code} %{content_type}\n' "$BASE/dashboard"
 
-# Le front répond
-curl -s -o /dev/null -w '%{http_code}\n' "$FRONT/"
+# Webhooks déclarés (503 tant que le secret n'est pas configuré)
+curl -s -o /dev/null -w '%{http_code}\n' -X POST "$BASE/api/webhooks/fedapay"
+curl -s -o /dev/null -w '%{http_code}\n' -X POST "$BASE/api/webhooks/ultrasms"
 
-# Login + cookie de refresh
-curl -s -c /tmp/numivo.cookies \
-  -H 'Content-Type: application/json' \
+# Login
+curl -s -H 'Content-Type: application/json' \
+  -H "Origin: $BASE" \
   -d '{"email":"client@numivo.local","password":"demo123456"}' \
-  "$FRONT/api/auth/login" | jq '{email: .user.email, token: (.accessToken | length)}'
-
-grep -i 'numivo_refresh' /tmp/numivo.cookies
-# vérifier : HttpOnly, Secure, Path=/api/auth, SameSite=Lax
+  "$BASE/api/auth/login" | jq '{email: .user.email, token: (.accessToken | length)}'
 ```
 
 Parcours de recette complet en staging (aucun argent réel) :
 
 ```bash
-BASE=https://numero-pearl.vercel.app
 TOKEN=$(curl -s -H 'Content-Type: application/json' \
   -d '{"email":"client@numivo.local","password":"demo123456"}' \
   "$BASE/api/auth/login" | jq -r .accessToken)
@@ -365,49 +287,25 @@ Résultat attendu : `status: "COMPLETED"` et un SMS mock contenant un code OTP.
 
 ---
 
-## 7. Poller et cron
+## 6. Poller et cron
 
 Le poller interroge Ultra SMS pour faire avancer les commandes sans webhook.
-Sur Vercel, il n'y a pas de processus de fond : il est déclenché par le cron
+Sur Vercel, il n'y a pas de processus de fond : il est déclenché par
 `GET /api/cron/poller`, protégé par `CRON_SECRET`.
 
 Vercel Cron envoie automatiquement `Authorization: Bearer $CRON_SECRET` lorsque
 la variable `CRON_SECRET` existe sur le projet.
 
-> **Limite Hobby** : un cron ne peut s'exécuter qu'une fois par jour. Un
-> planning `* * * * *` fait échouer le déploiement. Le staging utilise donc
-> `0 3 * * *` (03:00 UTC).
+> **Limite Hobby** : un cron ne peut s'exécuter qu'une fois par jour. Le projet
+> utilise `0 3 * * *` (03:00 UTC). Le workflow GitHub Actions
+> `.github/workflows/poller.yml` assure un passage toutes les 5 minutes.
 
-En production réelle, deux options :
-
-- passer le projet en **Vercel Pro** et repasser le cron à `*/5 * * * *` ;
-- conserver le cron quotidien et ajouter un déclencheur externe toutes les
-  5 minutes (GitHub Actions, cron-job.org, UptimeRobot…).
-
-Exemple GitHub Actions (`.github/workflows/poller.yml`), à activer seulement si
-l'option externe est retenue :
-
-```yaml
-name: Numivo poller
-on:
-  schedule:
-    - cron: '*/5 * * * *'
-  workflow_dispatch:
-jobs:
-  poll:
-    runs-on: ubuntu-latest
-    steps:
-      - run: |
-          curl -fsS -H "Authorization: Bearer ${{ secrets.NUMIVO_CRON_SECRET }}" \
-            https://numero-api.vercel.app/api/cron/poller
-```
-
-Le secret `NUMIVO_CRON_SECRET` doit contenir la même valeur que `CRON_SECRET`
-sur Vercel.
+Le secret `NUMIVO_CRON_SECRET` du dépôt GitHub doit contenir la même valeur que
+`CRON_SECRET` sur Vercel.
 
 ---
 
-## 8. Passage en live
+## 7. Passage en live
 
 Checklist avant d'encaisser de l'argent réel :
 
@@ -417,8 +315,8 @@ Checklist avant d'encaisser de l'argent réel :
       `ULTRASMS_MODE=live`.
 - [ ] Renseigner `FEDAPAY_*` et `ULTRASMS_*` (clés + secrets de webhook).
 - [ ] Déclarer les webhooks :
-      `https://<api>/api/webhooks/fedapay` et
-      `https://<api>/api/webhooks/ultrasms`.
+      `https://numero-pearl.vercel.app/api/webhooks/fedapay` et
+      `https://numero-pearl.vercel.app/api/webhooks/ultrasms`.
 - [ ] Supprimer le client de démonstration `client@numivo.local`.
 - [ ] Désactiver / purger le catalogue de repli et les offres mock, puis lancer
       une synchronisation Ultra SMS depuis la console admin.
@@ -428,29 +326,23 @@ Checklist avant d'encaisser de l'argent réel :
       `GET /api/health`.
 - [ ] Utiliser des secrets distincts entre staging et production.
 
-Après modification des variables : `vercel --prod --yes` pour redéployer l'API.
+Après modification des variables : `vercel --prod --yes` pour redéployer.
 
 ---
 
-## 9. Dépannage
+## 8. Dépannage
 
 | Symptôme | Cause / correction |
 | --- | --- |
-| `error TS2688: Cannot find type definition file for 'node'` | Ne pas mettre `"types": ["node"]` dans `server/tsconfig.json`. Vercel installe les devDependencies via `installCommand`. |
-| Le fichier `.env` apparaît dans la fonction serverless | Vérifier `server/.vercelignore` (`.env`, `.env.*`). |
-| `vercel deploy --prebuilt` échoue avec `ENOENT … readlink '.env'` | Utiliser `vercel --prod --yes` (déploiement normal) au lieu de `--prebuilt`. |
+| `Cannot find type definition file for 'vite/client'` | Le preset Express transpile `app.ts` avec le `tsconfig.json` racine. Les types Vite sont référencés dans `src/vite-env.d.ts`, pas dans `compilerOptions.types`. |
+| `error TS2688: Cannot find type definition file for 'node'` | Ne pas mettre `"types": ["node"]` dans `server/tsconfig.json`. |
+| `Module not found: ./components/public/...` au build Vercel | Un motif `.vercelignore` non ancré (ex. `public`) exclut aussi `src/components/public`. Utiliser `/public`. |
+| Le fichier `.env` apparaît dans la fonction serverless | Vérifier `.vercelignore` (`.env`, `.env.*`). |
+| `vercel deploy --prebuilt` échoue avec `ENOENT … readlink '.env'` | Utiliser `vercel deploy` / `vercel --prod` (déploiement normal). |
 | Le déploiement échoue sur `crons` | Sur Hobby, planning quotidien uniquement (`0 3 * * *`). |
 | `PrismaClientInitializationError` / moteur introuvable | `binaryTargets = ["native", "rhel-openssl-3.0.x"]` dans `server/prisma/schema.prisma`. |
 | `Configuration refusée : DIRECT_URL est requis` | Ajouter `DIRECT_URL` au projet Vercel. |
 | Le login fonctionne mais les appels suivants renvoient 401 | Envoyer l'access token dans `Authorization: Bearer …` ; le cookie ne sert qu'au refresh. |
-| Le refresh cookie n'est pas envoyé | Ne pas définir `VITE_API_URL` ; passer par le proxy `/api` du front. |
-| Erreur CORS | `CORS_ORIGINS` doit contenir l'origine exacte du front, sans slash final. |
-| Les réponses API sont mises en cache | Vérifier `Cache-Control: no-store` et l'en-tête `x-vercel-enable-rewrite-caching`. |
-
-Logs utiles :
-
-```bash
-vercel logs https://numero-api.vercel.app
-vercel logs https://numero-pearl.vercel.app
-vercel env ls production --cwd server
-```
+| Le refresh cookie n'est pas envoyé | Ne pas définir `VITE_API_URL` ; le front doit appeler `/api` sur sa propre origine. |
+| Erreur CORS | `CORS_ORIGINS` doit contenir l'origine exacte, sans slash final. |
+| Les réponses API sont mises en cache | Vérifier `Cache-Control: no-store` (API et `vercel.json`). |

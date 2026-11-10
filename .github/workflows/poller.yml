@@ -3,7 +3,7 @@ name: Numivo poller
 # Déclencheur externe du poller Ultra SMS.
 # Vercel Hobby ne permet qu'un cron quotidien ; ce workflow assure un passage
 # toutes les 5 minutes. Le secret NUMIVO_CRON_SECRET doit être identique à la
-# variable CRON_SECRET du projet Vercel numero-api.
+# variable CRON_SECRET du projet Vercel numero (front + API fusionnés).
 on:
   schedule:
     - cron: '*/5 * * * *'
@@ -29,4 +29,4 @@ jobs:
           curl --fail --silent --show-error \
             --retry 2 --retry-delay 5 --max-time 30 \
             -H "Authorization: Bearer $CRON_SECRET" \
-            https://numero-api.vercel.app/api/cron/poller
+            https://numero-pearl.vercel.app/api/cron/poller

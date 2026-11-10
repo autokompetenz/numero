@@ -77,7 +77,7 @@ fi
 
 echo >&2
 echo "— Domaines —" >&2
-APP_URL="$(ask_text 'URL API publique' 'https://numero-api.vercel.app')"
+APP_URL="$(ask_text 'URL publique (front + API)' 'https://numero-pearl.vercel.app')"
 FRONTEND_URL="$(ask_text 'URL front publique' 'https://numero-pearl.vercel.app')"
 
 JWT_ACCESS_SECRET="$(openssl rand -hex 64)"

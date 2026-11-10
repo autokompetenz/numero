@@ -313,22 +313,29 @@ les SMS.
 
 ## 8. Déploiement Vercel + Neon
 
-Le déploiement de référence utilise **deux projets Vercel** et une base **Neon** :
+Le déploiement de référence utilise **un seul projet Vercel** et une base **Neon** :
 
 | Composant | URL | Projet Vercel |
 | --- | --- | --- |
-| Front React/Vite | <https://numero-pearl.vercel.app> | `numero` |
-| API Express | <https://numero-api.vercel.app> | `numero-api` |
+| Front React/Vite + API Express | <https://numero-pearl.vercel.app> | `numero` |
 
-Le front réécrit `/api/*` vers l'API (`vercel.json`). Le navigateur reste donc
-sur le domaine du front, ce qui conserve le cookie de refresh first-party.
+Le front et l'API partagent la même origine : `/api/*` est servi par la fonction
+Express, le reste par le build Vite. Le cookie de refresh est donc first-party
+et aucun réglage CORS cross-origin n'est nécessaire.
+
+```
+Navigateur ──► numero-pearl.vercel.app
+                    ├── /            → build Vite (public/)
+                    ├── /assets/*    → fichiers statiques
+                    └── /api/*       → Express ──► Neon PostgreSQL (pooled)
+```
 
 Le staging est un déploiement de **production** avec `APP_ENV=staging`,
 `PAYMENTS_MODE=mock` et `ULTRASMS_MODE=mock` : aucun argent réel n'est engagé.
 Les outils `/api/dev/*` restent disponibles uniquement hors environnement live.
 
-Le guide complet — création Neon, migrations, variables des deux projets,
-cron du poller, vérifications et passage en live — est dans
+Le guide complet — création Neon, migrations, variables du projet, cron du
+poller, vérifications et passage en live — est dans
 [DEPLOIEMENT-VERCEL-NEON.md](DEPLOIEMENT-VERCEL-NEON.md).
 
 Résumé des commandes :
@@ -337,16 +344,20 @@ Résumé des commandes :
 # 1. Base Neon
 cd server && npx prisma migrate deploy && npm run db:seed && cd ..
 
-# 2. API (depuis server/, framework Express)
-cd server && vercel --prod --yes && cd ..
+# 2. Prévisualisation puis production (depuis la racine)
+vercel deploy --yes
+vercel promote <url-de-previsualisation> --yes
 
-# 3. Front (depuis la racine, framework Vite)
+# ou directement en production
 vercel --prod --yes
 ```
 
-> Sur Vercel Hobby, le cron est limité à une exécution par jour. Le staging
-> utilise `0 3 * * *` ; un déclencheur externe toutes les 5 minutes est décrit
-> dans le guide pour la production.
+> Sur Vercel Hobby, le cron est limité à une exécution par jour. Le projet
+> utilise `0 3 * * *` ; le workflow GitHub Actions
+> `.github/workflows/poller.yml` complète toutes les 5 minutes.
+>
+> L'ancien projet `numero-api` n'est plus nécessaire : le supprimer depuis le
+> dashboard Vercel une fois le projet fusionné validé.
 
 ---
 
