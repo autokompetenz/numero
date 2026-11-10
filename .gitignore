@@ -46,3 +46,6 @@ coverage/
 .tmp/
 .vercel
 .env*
+
+# Sauvegardes locales
+.backups/
