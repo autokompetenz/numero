@@ -307,8 +307,8 @@ export const AdminDashboard: React.FC = () => {
   const providerMode = adminStats?.provider?.mode ?? providerConfig.mode ?? appConfig?.ultrasms.mode;
   const webhookUrl =
     typeof window !== 'undefined'
-      ? `${window.location.origin}/api/webhooks/ultrasms/inbound`
-      : '/api/webhooks/ultrasms/inbound';
+      ? `${window.location.origin}/api/webhooks/ultrasms`
+      : '/api/webhooks/ultrasms';
 
   const tabs: { id: AdminTab; label: string; icon: typeof TrendingUp; count?: number }[] = [
     { id: 'financials', label: 'Rapports & Rentabilité', icon: TrendingUp },

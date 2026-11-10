@@ -1,4 +1,4 @@
-import { Router, Request } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
@@ -144,7 +144,11 @@ webhooksRouter.post('/fedapay', async (req, res, next) => {
 // -----------------------------------------------------------------------------
 // Ultra SMS
 // -----------------------------------------------------------------------------
-webhooksRouter.post('/ultrasms', async (req, res, next) => {
+async function handleUltraSmsWebhook(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
   try {
     if (!env.ULTRASMS_WEBHOOK_SECRET) {
       res.status(503).json({
@@ -242,4 +246,9 @@ webhooksRouter.post('/ultrasms', async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-});
+}
+
+webhooksRouter.post('/ultrasms', handleUltraSmsWebhook);
+// Alias : certaines configurations (dashboard admin, documentation) pointent
+// vers `/inbound`. Les deux chemins restent acceptés.
+webhooksRouter.post('/ultrasms/inbound', handleUltraSmsWebhook);

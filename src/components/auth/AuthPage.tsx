@@ -315,7 +315,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                 <ArrowRight className="w-4 h-4" />
               </button>
 
-              {/* Fast 1-Click Demo Logins */}
+              {/* Fast 1-Click Demo Logins — développement local uniquement */}
+              {import.meta.env.DEV && (
               <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-2">
                 <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-center">
                   Comptes de démonstration immédiats
@@ -345,6 +346,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   )}
                 </div>
               </div>
+              )}
 
             </form>
           )}

@@ -163,7 +163,7 @@ production avec `APP_ENV=staging`) :
 | `ULTRASMS_MODE` | `mock` | `live` |
 | `ULTRASMS_API_KEY` | vide | clé réelle |
 | `ULTRASMS_WEBHOOK_SECRET` | vide | secret du callback |
-| `ULTRASMS_CALLBACK_URL` | vide | `https://<api>/api/webhooks/ultrasms/inbound` |
+| `ULTRASMS_CALLBACK_URL` | vide | `https://<api>/api/webhooks/ultrasms` |
 | `PAYMENTS_MODE` | `mock` | `live` |
 | `FEDAPAY_PUBLIC_KEY` | vide | clé réelle |
 | `FEDAPAY_SECRET_KEY` | vide | clé réelle |
@@ -418,7 +418,7 @@ Checklist avant d'encaisser de l'argent réel :
 - [ ] Renseigner `FEDAPAY_*` et `ULTRASMS_*` (clés + secrets de webhook).
 - [ ] Déclarer les webhooks :
       `https://<api>/api/webhooks/fedapay` et
-      `https://<api>/api/webhooks/ultrasms/inbound`.
+      `https://<api>/api/webhooks/ultrasms`.
 - [ ] Supprimer le client de démonstration `client@numivo.local`.
 - [ ] Désactiver / purger le catalogue de repli et les offres mock, puis lancer
       une synchronisation Ultra SMS depuis la console admin.

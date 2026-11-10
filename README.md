@@ -227,7 +227,7 @@ P = (C + F + FX + M) / (1 − r)
 1. Renseigner `ULTRASMS_MODE=live`, `ULTRASMS_API_KEY` et
    `ULTRASMS_WEBHOOK_SECRET` dans `.env` (ou `.env.production`).
 2. Déclarer l'URL publique du callback :
-   `https://<api>/api/webhooks/ultrasms/inbound`.
+   `https://<api>/api/webhooks/ultrasms`.
 3. Vérifier la signature `X-UltraSMS-Signature` (HMAC SHA-256 de
    `timestamp + '.' + rawBody`, tolérance 300 s) — déjà implémentée.
 4. Depuis la console admin, lancer une synchronisation du catalogue puis
@@ -299,7 +299,7 @@ cloudflared tunnel --url http://localhost:4000
 # Exemple : https://abc-def-ghi.trycloudflare.com
 ```
 
-Renseigner alors `ULTRASMS_CALLBACK_URL=https://<tunnel>/api/webhooks/ultrasms/inbound`
+Renseigner alors `ULTRASMS_CALLBACK_URL=https://<tunnel>/api/webhooks/ultrasms`
 et déclarer `https://<tunnel>/api/webhooks/fedapay` dans le dashboard FedaPay.
 Sans tunnel, le parcours reste fonctionnel : le retour navigateur
 (`?payment_ref=`) déclenche la vérification côté serveur et le poller récupère
