@@ -6,6 +6,13 @@ import {defineConfig} from 'vite';
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
+    // `static/` contient les fichiers copiés tels quels ; `public/` est le
+    // build de production servi par Vercel (front + API dans un seul projet).
+    publicDir: 'static',
+    build: {
+      outDir: 'public',
+      emptyOutDir: true,
+    },
     resolve: {
       alias: {
         '@': path.resolve(import.meta.dirname, '.'),

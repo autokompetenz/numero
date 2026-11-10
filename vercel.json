@@ -1,12 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "express",
+  "installCommand": "npm install --include=dev && npm --prefix server install --include=dev",
+  "buildCommand": "npm run build",
   "rewrites": [
     {
-      "source": "/api/:path*",
-      "destination": "https://numero-api.vercel.app/api/:path*"
-    },
-    {
-      "source": "/(.*)",
+      "source": "/((?!api|assets/).*)",
       "destination": "/index.html"
     }
   ],
@@ -15,10 +14,16 @@
       "source": "/api/:path*",
       "headers": [
         {
-          "key": "x-vercel-enable-rewrite-caching",
-          "value": "0"
+          "key": "Cache-Control",
+          "value": "no-store"
         }
       ]
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/poller",
+      "schedule": "0 3 * * *"
     }
   ]
 }

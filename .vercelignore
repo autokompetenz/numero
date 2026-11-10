@@ -1,0 +1,14 @@
+# Fichiers exclus de l'upload Vercel (secrets, builds, dépendances).
+.env
+.env.*
+!.env.example
+!.env.production.example
+node_modules
+server/node_modules
+dist
+server/dist
+public
+.git
+.vercel
+server/.vercel
+*.log

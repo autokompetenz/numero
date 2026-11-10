@@ -6,6 +6,7 @@ server/node_modules/
 build/
 dist/
 server/dist/
+public/
 *.tsbuildinfo
 
 # Environnement et secrets

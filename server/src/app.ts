@@ -138,6 +138,8 @@ export function createApp(): Express {
   // En production, l'API peut servir le build React (déploiement mono-service).
   if (isProduction) {
     const candidates = [
+      path.resolve(process.cwd(), 'public'),
+      path.resolve(process.cwd(), '..', 'public'),
       path.resolve(process.cwd(), '..', 'dist'),
       path.resolve(process.cwd(), 'dist'),
     ];
