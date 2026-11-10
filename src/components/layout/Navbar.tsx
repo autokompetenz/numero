@@ -11,7 +11,6 @@ import {
   Check,
   Smartphone,
   LogOut,
-  Download,
   Menu,
   X,
   ArrowRight,
@@ -148,17 +147,6 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, onOpenB
               </div>
             )}
           </div>
-
-          {/* Download project archive (desktop only) */}
-          <a
-            href="/numivo-projet.zip"
-            download="numivo-projet.zip"
-            className="hidden xl:flex items-center justify-center w-9 h-9 text-slate-500 hover:text-emerald-600 dark:text-slate-400 dark:hover:text-emerald-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            title="Télécharger l'archive ZIP du projet"
-            aria-label="Télécharger l'archive ZIP du projet"
-          >
-            <Download className="w-4 h-4" />
-          </a>
 
           {/* Theme */}
           <button
@@ -348,14 +336,6 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, onOpenB
                   {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
                   {theme === 'dark' ? 'Mode clair' : 'Mode sombre'}
                 </button>
-                <a
-                  href="/numivo-projet.zip"
-                  download="numivo-projet.zip"
-                  className="flex-1 inline-flex items-center justify-center gap-2 h-10 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200"
-                >
-                  <Download className="w-4 h-4" />
-                  Projet ZIP
-                </a>
               </div>
 
               {(role === 'CLIENT' || role === 'ADMIN') && (

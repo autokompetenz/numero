@@ -11,6 +11,9 @@ export const CatalogSection: React.FC<CatalogSectionProps> = ({ onSelectProduct 
   const {
     catalog,
     countries,
+    countriesLoading,
+    countriesError,
+    refreshCountries,
     services,
     currency,
     catalogFilters,
@@ -158,7 +161,7 @@ export const CatalogSection: React.FC<CatalogSectionProps> = ({ onSelectProduct 
         </div>
 
         {/* Country Filter Chips (Interactive filter buttons) */}
-        <div className="-mx-4 px-4 sm:mx-0 sm:px-0 pb-6 flex items-center gap-2 overflow-x-auto scrollbar-none text-xs snap-x">
+        <div className="pb-6 flex flex-wrap items-center gap-2 text-xs">
           <span className="text-slate-500 dark:text-slate-400 text-[11px] font-semibold uppercase tracking-wider shrink-0 mr-1">
             Pays :
           </span>
@@ -186,6 +189,18 @@ export const CatalogSection: React.FC<CatalogSectionProps> = ({ onSelectProduct 
               <span>{c.name}</span>
             </button>
           ))}
+          {countriesLoading && countries.length === 0 && (
+            <span className="text-slate-500 dark:text-slate-400">Chargement des pays…</span>
+          )}
+          {countriesError && (
+            <button
+              type="button"
+              onClick={() => void refreshCountries()}
+              className="text-rose-600 hover:underline dark:text-rose-400"
+            >
+              Liste indisponible — réessayer
+            </button>
+          )}
         </div>
 
         {/* Catalog Grid */}

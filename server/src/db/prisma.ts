@@ -1,18 +1,20 @@
 import { PrismaClient } from '@prisma/client';
-import { env, isProduction } from '../config/env.js';
+import { env } from '../config/env.js';
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
+/**
+ * Le client est mémorisé sur `globalThis` dans tous les environnements.
+ * Indispensable en serverless (Vercel) pour réutiliser le pool entre invocations.
+ */
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
-    log: isProduction ? ['warn', 'error'] : ['warn', 'error'],
+    log: ['warn', 'error'],
     datasources: { db: { url: env.DATABASE_URL } },
   });
 
-if (!isProduction) {
-  globalForPrisma.prisma = prisma;
-}
+globalForPrisma.prisma = prisma;
 
 export async function disconnectPrisma(): Promise<void> {
   await prisma.$disconnect();

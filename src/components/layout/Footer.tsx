@@ -149,15 +149,6 @@ export const Footer: React.FC<FooterProps> = ({ onOpenLegal, setActiveTab }) => 
                   Connexion / Inscription client
                 </button>
               </li>
-              <li>
-                <a
-                  href="/numivo-projet.zip"
-                  download="numivo-projet.zip"
-                  className="font-mono text-emerald-700 dark:text-emerald-400 font-bold hover:underline inline-flex items-center gap-1"
-                >
-                  <span>📦 Télécharger le projet (.ZIP)</span>
-                </a>
-              </li>
             </ul>
           </div>
 

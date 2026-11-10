@@ -216,19 +216,22 @@ export async function confirmPayment(paymentId: string): Promise<void> {
 
   if (payment.purpose === 'TOPUP') {
     if (!payment.wallet) throw notFound('Portefeuille cible introuvable.');
-    await prisma.payment.update({
-      where: { id: payment.id },
-      data: { status: 'APPROVED', paidAt: new Date(), failureReason: null },
-    });
-    await creditWallet({
-      userId: payment.wallet.userId,
-      currency: payment.currency,
-      amountMinor: payment.amountMinor,
-      type: 'DEPOSIT',
-      description: `Recharge portefeuille ${payment.reference}`,
-      idempotencyKey: `topup:${payment.id}`,
-      metadata: { paymentId: payment.id, provider: payment.provider },
-      referencePrefix: 'DEP',
+    await prisma.$transaction(async (tx) => {
+      await tx.payment.update({
+        where: { id: payment.id },
+        data: { status: 'APPROVED', paidAt: new Date(), failureReason: null },
+      });
+      await creditWallet({
+        userId: payment.wallet!.userId,
+        currency: payment.currency,
+        amountMinor: payment.amountMinor,
+        type: 'DEPOSIT',
+        description: `Recharge portefeuille ${payment.reference}`,
+        idempotencyKey: `topup:${payment.id}`,
+        metadata: { paymentId: payment.id, provider: payment.provider },
+        referencePrefix: 'DEP',
+        tx,
+      });
     });
     await logAudit({
       actorId: payment.wallet.userId,
@@ -351,6 +354,24 @@ export async function applyProviderTransaction(
         source,
       },
       'Montant FedaPay incohérent',
+    );
+    return 'ignored';
+  }
+
+  if (String(transaction.currency).toUpperCase() !== payment.currency) {
+    await markPaymentFailed(
+      payment.id,
+      `Devise FedaPay incohérente : attendu ${payment.currency}, reçu ${transaction.currency}.`,
+      'FAILED',
+    );
+    logger.error(
+      {
+        paymentId: payment.id,
+        expected: payment.currency,
+        received: transaction.currency,
+        source,
+      },
+      'Devise FedaPay incohérente',
     );
     return 'ignored';
   }

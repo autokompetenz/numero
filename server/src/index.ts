@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
-import { createApp } from './app.js';
-import { env, isProduction } from './config/env.js';
+import app from './app.js';
+import { env, isLiveEnvironment } from './config/env.js';
 import { logger } from './config/logger.js';
 import { prisma, disconnectPrisma } from './db/prisma.js';
 import { startPoller, stopPoller } from './services/poller.js';
@@ -13,7 +13,6 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const app = createApp();
   const server = createServer(app);
 
   server.listen(env.PORT, () => {
@@ -26,8 +25,8 @@ async function main(): Promise<void> {
       },
       'API Numivo démarrée',
     );
-    if (isProduction && (env.PAYMENTS_MODE === 'mock' || env.ULTRASMS_MODE === 'mock')) {
-      logger.fatal('Mode simulation détecté en production — arrêt immédiat.');
+    if (isLiveEnvironment && (env.PAYMENTS_MODE !== 'live' || env.ULTRASMS_MODE !== 'live')) {
+      logger.fatal('Modes de fournisseur non-live détectés en production — arrêt immédiat.');
       process.exit(1);
     }
     startPoller();

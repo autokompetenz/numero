@@ -4,8 +4,10 @@ Application complète (frontend React/Vite + API Node/Express + PostgreSQL) pour
 vendre des numéros virtuels temporaires et des locations, recevoir les SMS via
 Ultra SMS, encaisser par FedaPay et gérer un portefeuille client en XOF.
 
-> **État actuel** : parcours complet fonctionnel en local avec les fournisseurs
-> simulés (`ULTRASMS_MODE=mock`, `PAYMENTS_MODE=mock`). Le passage en clés
+> **État actuel** : parcours complet fonctionnel en local et en **staging
+> Vercel + Neon** avec les fournisseurs simulés (`ULTRASMS_MODE=mock`,
+> `PAYMENTS_MODE=mock`) :
+> [numero-pearl.vercel.app](https://numero-pearl.vercel.app). Le passage en clés
 > réelles se fait uniquement par configuration, sans modification de code.
 
 ---
@@ -43,17 +45,19 @@ Navigateur ──► React/Vite (src/) ──► API Express (server/src/) ─�
 | `scripts/e2e-api.sh` | Recette bout-en-bout de l'API |
 | `scripts/ui-check.cjs` | Recette navigateur (Chrome headless + Playwright) |
 | `scripts/set-keys.sh` | Saisie masquée des clés fournisseur dans `.env` |
-| `docker-compose.yml` | PostgreSQL de développement |
-| `docker-compose.prod.yml` | Déploiement API + front + PostgreSQL |
+| `vercel.json` | Projet front : rewrite `/api` et fallback SPA |
+| `server/vercel.json` | Projet API : build, cron du poller |
+| `DEPLOIEMENT-VERCEL-NEON.md` | Guide de déploiement front + API + Neon |
 
 ---
 
 ## 2. Prérequis
 
 - Node.js 22+ et npm
-- Docker **ou** Podman (PostgreSQL local)
+- PostgreSQL 17 en local **ou** une base [Neon](https://neon.tech)
 - `jq` et `curl` pour les scripts de recette
 - Chrome/Chromium + Playwright pour `scripts/ui-check.cjs`
+- Pour le déploiement : comptes Vercel et Neon, CLI `vercel`
 
 ---
 
@@ -61,21 +65,17 @@ Navigateur ──► React/Vite (src/) ──► API Express (server/src/) ─�
 
 ### 3.1 Base de données
 
-```bash
-# Docker
-docker compose up -d
-
-# Podman rootless
-systemctl --user enable --now podman.socket
-DOCKER_HOST=unix:///run/user/1000/podman/podman.sock docker compose up -d
-```
-
-PostgreSQL écoute sur `127.0.0.1:5433` (évite le conflit avec un PostgreSQL
-système sur 5432). Vérification :
+Avec un PostgreSQL local (adapter l'utilisateur, le mot de passe et le port) :
 
 ```bash
-psql "postgresql://numivo:numivo_dev_password@127.0.0.1:5433/numivo" -c 'select 1'
+createuser numivo --pwprompt
+createdb numivo --owner numivo
+psql "postgresql://numivo:numivo_dev_password@127.0.0.1:5432/numivo" -c 'select 1'
 ```
+
+Avec Neon, créer un projet et utiliser sa chaîne de connexion **pooled** dans
+`DATABASE_URL`, puis la même chaîne sans `-pooler` dans `DIRECT_URL`. Voir
+[DEPLOIEMENT-VERCEL-NEON.md](DEPLOIEMENT-VERCEL-NEON.md#2-base-de-données-neon).
 
 ### 3.2 Configuration
 
@@ -87,7 +87,7 @@ Renseigner au minimum :
 
 - `JWT_ACCESS_SECRET` : `openssl rand -hex 64`
 - `ADMIN_PASSWORD` : 12 caractères minimum
-- `DATABASE_URL` (valeur locale fournie par défaut)
+- `DATABASE_URL` (et `DIRECT_URL` si la base est distante)
 
 Le serveur lit `.env` à la racine du dépôt (un lien `server/.env -> ../.env`
 permet aussi de lancer les commandes Prisma depuis `server/`).
@@ -252,13 +252,19 @@ vérification est faite côté serveur (`GET /api/payments/by-reference/:referen
 
 Au démarrage, l'API refuse de démarrer si :
 
-- `NODE_ENV=production` avec un mode `mock` ;
+- un déploiement **live** (`APP_ENV=production`) utilise un mode `mock` ;
+- en live, `PAYMENTS_MODE` n'est pas `live` ;
 - `COOKIE_SECURE` n'est pas `true` en production ;
 - `JWT_ACCESS_SECRET` fait moins de 64 caractères en production ;
 - `ADMIN_PASSWORD` est absent ou fait moins de 12 caractères en production ;
 - `APP_URL` n'est pas en HTTPS en production ;
 - `ULTRASMS_WEBHOOK_SECRET` manque en production quand `ULTRASMS_MODE=live` ;
-- les clés fournisseur requises sont absentes.
+- les clés fournisseur requises sont absentes ;
+- sur Vercel, `CRON_SECRET` ou `DIRECT_URL` manque.
+
+Un déploiement **staging** (`APP_ENV=staging`, y compris une preview Vercel)
+reste en `NODE_ENV=production` mais accepte les fournisseurs simulés et les
+outils `/api/dev/*`.
 
 ### 7.4 Test local avec les vraies clés
 
@@ -305,76 +311,42 @@ les SMS.
 
 ---
 
-## 8. Déploiement Docker
+## 8. Déploiement Vercel + Neon
 
-Le compose de production construit trois services : `postgres`, `api` (avec une
-étape `migrate` séparée) et `web` (Nginx + build statique + proxy `/api`).
+Le déploiement de référence utilise **deux projets Vercel** et une base **Neon** :
 
-### 8.1 Préparation
+| Composant | URL | Projet Vercel |
+| --- | --- | --- |
+| Front React/Vite | <https://numero-pearl.vercel.app> | `numero` |
+| API Express | <https://numero-api.vercel.app> | `numero-api` |
 
-```bash
-cp .env.production.example .env.production
-# Renseigner les secrets, les URLs HTTPS et les clés fournisseur.
-```
+Le front réécrit `/api/*` vers l'API (`vercel.json`). Le navigateur reste donc
+sur le domaine du front, ce qui conserve le cookie de refresh first-party.
 
-Points à contrôler :
+Le staging est un déploiement de **production** avec `APP_ENV=staging`,
+`PAYMENTS_MODE=mock` et `ULTRASMS_MODE=mock` : aucun argent réel n'est engagé.
+Les outils `/api/dev/*` restent disponibles uniquement hors environnement live.
 
-- `DATABASE_URL` pointe vers `postgres:5432` (réseau interne du compose) ;
-- `POSTGRES_PASSWORD` identique dans `DATABASE_URL` et la variable dédiée ;
-- `APP_URL`, `FRONTEND_URL` et `CORS_ORIGINS` utilisent le domaine HTTPS réel
-  (un seul domaine suffit : Nginx sert le front et proxifie `/api`) ;
-- `TRUST_PROXY=1`, `COOKIE_SECURE=true` ;
-- `VITE_API_URL` reste vide : le front appelle `/api` sur la même origine.
+Le guide complet — création Neon, migrations, variables des deux projets,
+cron du poller, vérifications et passage en live — est dans
+[DEPLOIEMENT-VERCEL-NEON.md](DEPLOIEMENT-VERCEL-NEON.md).
 
-### 8.2 Lancement
-
-```bash
-docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
-```
-
-Le service `migrate` applique `prisma migrate deploy` avant le démarrage de
-l'API. Le front est exposé sur le port 80 ; un reverse proxy TLS (Caddy, Nginx,
-Traefik) doit terminer HTTPS et transmettre `X-Forwarded-*`.
-
-### 8.2.1 Amorçage initial (une seule fois)
+Résumé des commandes :
 
 ```bash
-docker compose -f docker-compose.prod.yml --env-file .env.production \
-  --profile tools run --rm seed
+# 1. Base Neon
+cd server && npx prisma migrate deploy && npm run db:seed && cd ..
+
+# 2. API (depuis server/, framework Express)
+cd server && vercel --prod --yes && cd ..
+
+# 3. Front (depuis la racine, framework Vite)
+vercel --prod --yes
 ```
 
-Le seed est idempotent. Il crée les pays, les services, la configuration
-tarifaire, les taux de change et le compte administrateur (`ADMIN_EMAIL` /
-`ADMIN_PASSWORD`). En production, il ne crée **aucun** client de démonstration
-et laisse le catalogue de repli **désactivé** : seules les offres réellement
-synchronisées depuis Ultra SMS sont vendables. Lancer ensuite une
-synchronisation depuis la console admin.
-
-### 8.3 Exploitation
-
-```bash
-# Journaux
-docker compose -f docker-compose.prod.yml logs -f api
-
-# Sauvegarde PostgreSQL
-docker compose -f docker-compose.prod.yml exec postgres \
-  pg_dump -U numivo numivo | gzip > backup-$(date +%F).sql.gz
-
-# Nouvelle migration après modification du schéma
-cd server && npx prisma migrate dev --name <nom>
-# puis reconstruire et relancer le service migrate/api
-```
-
-### 8.4 Checklist de mise en production
-
-- [ ] Secrets générés (JWT 64 octets, mot de passe admin ≥ 12 caractères).
-- [ ] `PAYMENTS_MODE=sandbox` validé avant `live`.
-- [ ] `ULTRASMS_MODE=live` avec clé et callback signé opérationnels.
-- [ ] Webhooks FedaPay et Ultra SMS déclarés et testés.
-- [ ] HTTPS actif, cookies `Secure`, CORS limité au domaine du front.
-- [ ] Sauvegardes PostgreSQL planifiées et restauration testée.
-- [ ] `GET /api/health` supervisé, journaux centralisés.
-- [ ] Outils `/api/dev/*` inaccessibles (ils le sont automatiquement en production).
+> Sur Vercel Hobby, le cron est limité à une exécution par jour. Le staging
+> utilise `0 3 * * *` ; un déclencheur externe toutes les 5 minutes est décrit
+> dans le guide pour la production.
 
 ---
 

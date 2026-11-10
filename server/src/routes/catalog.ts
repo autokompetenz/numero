@@ -2,12 +2,20 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { validateQuery } from '../middleware/validate.js';
 import { badRequest } from '../lib/errors.js';
-import { listCatalog, quoteItem, serializeBreakdown } from '../services/catalog.js';
+import { listCatalog, listEnabledCountries, quoteItem, serializeBreakdown } from '../services/catalog.js';
 import { getExchangeRates } from '../services/exchangeRates.js';
 import { getPricingConfig } from '../services/pricing.js';
 import { env } from '../config/env.js';
 
 export const catalogRouter = Router();
+
+catalogRouter.get('/countries', async (_req, res, next) => {
+  try {
+    res.json({ countries: await listEnabledCountries() });
+  } catch (error) {
+    next(error);
+  }
+});
 
 const catalogQuerySchema = z.object({
   currency: z.enum(['XOF', 'EUR', 'USD']).default('XOF'),

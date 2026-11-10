@@ -1,4 +1,4 @@
-import { env, isProduction } from '../../config/env.js';
+import { env, isLiveEnvironment } from '../../config/env.js';
 import { LiveFedaPayClient } from './client.js';
 import { MockFedaPayClient } from './mock.js';
 import { FedaPayClient } from './types.js';
@@ -9,8 +9,8 @@ export function getFedaPayClient(): FedaPayClient {
   if (instance) return instance;
 
   if (env.PAYMENTS_MODE === 'mock') {
-    if (isProduction) {
-      throw new Error('Le mode mock FedaPay est interdit en production.');
+    if (isLiveEnvironment) {
+      throw new Error('Le mode mock FedaPay est interdit en environnement live.');
     }
     instance = new MockFedaPayClient();
     return instance;

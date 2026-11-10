@@ -5,7 +5,7 @@ import helmet from 'helmet';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import pinoHttp from 'pino-http';
-import { env, corsOrigins, isProduction } from './config/env.js';
+import { env, corsOrigins, devToolsEnabled, isProduction } from './config/env.js';
 import { logger } from './config/logger.js';
 import { prisma } from './db/prisma.js';
 import { generalLimiter } from './middleware/rateLimit.js';
@@ -19,6 +19,7 @@ import { paymentsRouter } from './routes/payments.js';
 import { webhooksRouter } from './routes/webhooks.js';
 import { adminRouter } from './routes/admin.js';
 import { devRouter } from './routes/dev.js';
+import { runPollerTick } from './services/poller.js';
 
 export function createApp(): Express {
   const app = express();
@@ -76,6 +77,13 @@ export function createApp(): Express {
   app.use(express.urlencoded({ extended: false, limit: '100kb' }));
   app.use(cookieParser());
 
+  // L'API ne doit jamais être mise en cache (sessions, soldes, paiements).
+  // Vercel respecte les en-têtes de cache des origines externes sur les rewrites.
+  app.use('/api', (_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
+
   app.get('/api/health', async (_req, res) => {
     let database = 'down';
     try {
@@ -94,6 +102,19 @@ export function createApp(): Express {
     });
   });
 
+  app.get('/api/cron/poller', async (req, res, next) => {
+    if (!env.CRON_SECRET || req.headers.authorization !== `Bearer ${env.CRON_SECRET}`) {
+      res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Accès refusé.' } });
+      return;
+    }
+    try {
+      await runPollerTick();
+      res.json({ ok: true });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.get('/api', (_req, res) => {
     res.json({
       name: 'Numivo API',
@@ -110,7 +131,7 @@ export function createApp(): Express {
   app.use('/api/admin', generalLimiter, adminRouter);
   app.use('/api/webhooks', webhooksRouter);
 
-  if (!isProduction) {
+  if (devToolsEnabled) {
     app.use('/api/dev', devRouter);
   }
 
@@ -136,3 +157,6 @@ export function createApp(): Express {
 
   return app;
 }
+
+const app = createApp();
+export default app;

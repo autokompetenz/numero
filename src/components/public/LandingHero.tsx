@@ -17,6 +17,9 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
   const {
     currency,
     countries,
+    countriesLoading,
+    countriesError,
+    refreshCountries,
     catalogServiceTotal,
     getServicesForCountry,
     resolveCatalogItem,
@@ -185,11 +188,17 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
                   <select
                     value={selectedCountryCode}
                     onChange={(e) => setSelectedCountryCode(e.target.value)}
-                    disabled={!countries.length}
+                  disabled={countriesLoading || !countries.length}
                     className="w-full min-h-11 text-sm font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none disabled:opacity-60"
                   >
                     {countries.length === 0 && (
-                      <option value="">Chargement des pays…</option>
+                      <option value="">
+                        {countriesLoading
+                          ? 'Chargement des pays…'
+                          : countriesError
+                            ? 'Pays indisponibles'
+                            : 'Aucun pays configuré'}
+                      </option>
                     )}
                     {countries.map((country) => (
                       <option key={country.code} value={country.code}>
@@ -197,6 +206,15 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
                       </option>
                     ))}
                   </select>
+                  {countriesError && (
+                    <button
+                      type="button"
+                      onClick={() => void refreshCountries()}
+                      className="mt-1 text-xs font-medium text-rose-600 hover:underline dark:text-rose-400"
+                    >
+                      Impossible de charger les pays. Réessayer
+                    </button>
+                  )}
                 </div>
 
                 {/* Service selection */}

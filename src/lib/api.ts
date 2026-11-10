@@ -6,6 +6,7 @@ import {
   AuditLog,
   AuthResponse,
   CatalogResponse,
+  Country,
   Currency,
   NumberType,
   Order,
@@ -21,7 +22,8 @@ import {
 /**
  * URL de l'API.
  * - Développement : API Express sur le port 4000, front Vite sur 3000.
- * - Production : l'API sert le build React, donc même origine.
+ * - Production : le front appelle `/api` sur sa propre origine ; Vercel
+ *   réécrit `/api/*` vers le projet API (cookie de refresh first-party).
  */
 const API_BASE = (() => {
   const configured = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
@@ -215,6 +217,23 @@ export const authApi = {
 
 export const catalogApi = {
   config: () => request<AppConfig>('/catalog/config'),
+
+  countries: async () => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 10_000);
+    try {
+      return await request<{ countries: Country[] }>('/catalog/countries', {
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new Error('Le serveur ne répond pas au chargement des pays.');
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  },
 
   list: (params: {
     currency: Currency;

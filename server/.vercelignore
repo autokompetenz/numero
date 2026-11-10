@@ -1,0 +1,11 @@
+# Secrets locaux : jamais dans un déploiement
+.env
+.env.*
+!.env.example
+
+# Artefacts locaux
+.vercel
+dist
+tests
+Dockerfile
+*.md

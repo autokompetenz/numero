@@ -60,23 +60,22 @@ interface LedgerEntry {
  * - amountMinor < 0 : débit (refusé si le solde deviendrait négatif)
  * - idempotent via idempotencyKey
  */
-async function applyLedgerEntry(entry: LedgerEntry) {
-  const existing = await prisma.walletTransaction.findUnique({
-    where: { idempotencyKey: entry.idempotencyKey },
-  });
-  if (existing) return existing;
+async function applyLedgerEntry(entry: LedgerEntry, transaction?: Tx) {
+  const apply = async (tx: Tx) => {
+    const existing = await tx.walletTransaction.findUnique({
+      where: { idempotencyKey: entry.idempotencyKey },
+    });
+    if (existing) return existing;
 
-  try {
-    return await prisma.$transaction(async (tx) => {
-      const wallet = await tx.wallet.findUnique({
-        where: { userId_currency: { userId: entry.userId, currency: entry.currency } },
-      });
-      if (!wallet) throw notFound(`Portefeuille ${entry.currency} introuvable.`);
+    const wallet = await tx.wallet.findUnique({
+      where: { userId_currency: { userId: entry.userId, currency: entry.currency } },
+    });
+    if (!wallet) throw notFound(`Portefeuille ${entry.currency} introuvable.`);
 
-      const delta = entry.amountMinor;
-      if (delta === 0n) throw new Error('Le montant du mouvement ne peut pas être nul.');
+    const delta = entry.amountMinor;
+    if (delta === 0n) throw new Error('Le montant du mouvement ne peut pas être nul.');
 
-      const rows = await tx.$queryRaw<Array<{ balanceMinor: bigint }>>`
+    const rows = await tx.$queryRaw<Array<{ balanceMinor: bigint }>>`
         UPDATE "Wallet"
         SET "balanceMinor" = "balanceMinor" + ${delta},
             "version" = "version" + 1,
@@ -84,30 +83,35 @@ async function applyLedgerEntry(entry: LedgerEntry) {
         WHERE "id" = ${wallet.id}
           AND ("balanceMinor" + ${delta}) >= 0
         RETURNING "balanceMinor"
-      `;
+    `;
 
-      const updated = rows[0];
-      if (!updated) {
-        throw insufficientFunds(
-          `Solde ${entry.currency} insuffisant. Solde actuel : ${formatMinor(wallet.balanceMinor, entry.currency)}.`,
-        );
-      }
+    const updated = rows[0];
+    if (!updated) {
+      throw insufficientFunds(
+        `Solde ${entry.currency} insuffisant. Solde actuel : ${formatMinor(wallet.balanceMinor, entry.currency)}.`,
+      );
+    }
 
-      return tx.walletTransaction.create({
-        data: {
-          walletId: wallet.id,
-          type: entry.type,
-          status: 'CONFIRMED',
-          amountMinor: delta,
-          balanceAfterMinor: updated.balanceMinor,
-          currency: entry.currency,
-          reference: newReference(entry.referencePrefix ?? 'TX'),
-          idempotencyKey: entry.idempotencyKey,
-          description: entry.description,
-          metadata: entry.metadata,
-        },
-      });
+    return tx.walletTransaction.create({
+      data: {
+        walletId: wallet.id,
+        type: entry.type,
+        status: 'CONFIRMED',
+        amountMinor: delta,
+        balanceAfterMinor: updated.balanceMinor,
+        currency: entry.currency,
+        reference: newReference(entry.referencePrefix ?? 'TX'),
+        idempotencyKey: entry.idempotencyKey,
+        description: entry.description,
+        metadata: entry.metadata,
+      },
     });
+  };
+
+  if (transaction) return apply(transaction);
+
+  try {
+    return await prisma.$transaction(apply);
   } catch (error) {
     // Course entre deux requêtes idempotentes : renvoyer l'écriture déjà créée.
     if (error instanceof PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -141,7 +145,7 @@ export function creditWallet(params: {
     idempotencyKey: params.idempotencyKey,
     metadata: params.metadata,
     referencePrefix: params.referencePrefix ?? 'DEP',
-  });
+  }, params.tx);
 }
 
 export function debitWallet(params: {
@@ -152,6 +156,7 @@ export function debitWallet(params: {
   idempotencyKey: string;
   metadata?: Prisma.InputJsonValue;
   referencePrefix?: string;
+  tx?: Tx;
 }) {
   if (params.amountMinor <= 0n) throw new Error('Le débit doit être strictement positif.');
   return applyLedgerEntry({
@@ -163,7 +168,7 @@ export function debitWallet(params: {
     idempotencyKey: params.idempotencyKey,
     metadata: params.metadata,
     referencePrefix: params.referencePrefix ?? 'PUR',
-  });
+  }, params.tx);
 }
 
 export function adjustWallet(params: {

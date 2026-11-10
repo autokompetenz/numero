@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../db/prisma.js';
-import { env, isProduction } from '../config/env.js';
+import { env, isLiveEnvironment } from '../config/env.js';
 import { forbidden, notFound } from '../lib/errors.js';
 import { getFedaPayClient } from '../providers/fedapay/index.js';
 import { MockFedaPayClient } from '../providers/fedapay/mock.js';
@@ -12,8 +12,8 @@ import { MockUltraSmsProvider } from '../providers/ultrasms/mock.js';
 export const devRouter = Router();
 
 devRouter.use((_req, _res, next) => {
-  if (isProduction) {
-    next(forbidden('Outils de développement désactivés en production.'));
+  if (isLiveEnvironment) {
+    next(forbidden('Outils de développement désactivés en environnement live.'));
     return;
   }
   next();

@@ -244,6 +244,28 @@ export async function createOrder(input: CreateOrderInput) {
       },
     });
 
+    if (input.paymentMethod === 'WALLET') {
+      const paidAt = new Date();
+      await debitWallet({
+        userId: input.userId,
+        currency: 'XOF',
+        amountMinor: breakdown.sellingPriceXofMinor,
+        description: `Achat ${createdOrder.reference} — ${item.serviceId} / ${item.countryCode}`,
+        idempotencyKey: `wallet:order:${createdOrder.id}`,
+        metadata: { orderId: createdOrder.id },
+        referencePrefix: 'PUR',
+        tx,
+      });
+      await tx.payment.update({
+        where: { id: createdPayment.id },
+        data: { status: 'APPROVED', paidAt },
+      });
+      await tx.order.update({
+        where: { id: createdOrder.id },
+        data: { status: 'PAID', paidAt },
+      });
+    }
+
     return { order: createdOrder, payment: createdPayment };
   });
 
@@ -263,39 +285,9 @@ export async function createOrder(input: CreateOrderInput) {
   });
 
   if (input.paymentMethod === 'WALLET') {
-    try {
-      await debitWallet({
-        userId: input.userId,
-        currency: 'XOF',
-        amountMinor: breakdown.sellingPriceXofMinor,
-        description: `Achat ${order.reference} — ${item.serviceId} / ${item.countryCode}`,
-        idempotencyKey: `wallet:order:${order.id}`,
-        metadata: { orderId: order.id },
-        referencePrefix: 'PUR',
-      });
-    } catch (error) {
-      await prisma.order.update({
-        where: { id: order.id },
-        data: { status: 'CANCELLED', cancellationReason: 'Solde insuffisant.' },
-      });
-      await prisma.payment.update({
-        where: { id: payment.id },
-        data: { status: 'FAILED', failureReason: 'Solde insuffisant.' },
-      });
-      throw error;
-    }
-
-    await prisma.$transaction([
-      prisma.payment.update({
-        where: { id: payment.id },
-        data: { status: 'APPROVED', paidAt: new Date() },
-      }),
-      prisma.order.update({
-        where: { id: order.id },
-        data: { status: 'PAID', paidAt: new Date() },
-      }),
-    ]);
-
+    // L'achat, le débit et les statuts ont été validés dans la transaction
+    // qui a créé la commande. Le poller reprendra aussi cette commande après
+    // un redémarrage si le processus s'arrête avant l'appel fournisseur.
     scheduleFulfillment(order.id);
 
     const updated = await prisma.order.findUniqueOrThrow({
@@ -437,13 +429,24 @@ export async function listProcessingOrders(limit = 25) {
   });
 }
 
+/** Les commandes PAID sont la file persistante de fulfillment : le poller
+ * les reprend après un redémarrage si le processus a manqué le setTimeout. */
+export async function listPaidOrders(limit = 25) {
+  return prisma.order.findMany({
+    where: { status: 'PAID' },
+    select: { id: true },
+    orderBy: { updatedAt: 'asc' },
+    take: limit,
+  });
+}
+
 export function orderTypes(): NumberType[] {
   return ['TEMPORARY', 'RENTAL'];
 }
 
 export function assertProductionPaymentMode(): void {
-  if (env.NODE_ENV === 'production' && env.PAYMENTS_MODE === 'mock') {
-    throw new Error('Paiements simulés interdits en production.');
+  if (env.NODE_ENV === 'production' && env.PAYMENTS_MODE !== 'live') {
+    throw new Error('Le mode sandbox ou mock est interdit en production.');
   }
 }
 

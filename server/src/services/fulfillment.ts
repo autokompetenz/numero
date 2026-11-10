@@ -139,10 +139,11 @@ export async function fulfillOrder(orderId: string): Promise<void> {
     return;
   }
 
-  await prisma.order.update({
-    where: { id: order.id },
+  const claimed = await prisma.order.updateMany({
+    where: { id: order.id, status: 'PAID' },
     data: { status: 'PROCESSING' },
   });
+  if (claimed.count !== 1) return;
 
   try {
     const maxPriceCents = await determineMaxPriceCents(order.id);

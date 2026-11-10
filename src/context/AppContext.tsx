@@ -81,6 +81,9 @@ interface AppContextType {
   appConfig: AppConfig | null;
   catalog: CatalogItem[];
   countries: Country[];
+  countriesLoading: boolean;
+  countriesError: string | null;
+  refreshCountries: () => Promise<void>;
   services: ServiceItem[];
   catalogLoading: boolean;
   catalogLoadingMore: boolean;
@@ -239,6 +242,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [countries, setCountries] = useState<Country[]>([]);
+  const [countriesLoading, setCountriesLoading] = useState(true);
+  const [countriesError, setCountriesError] = useState<string | null>(null);
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogLoadingMore, setCatalogLoadingMore] = useState(false);
@@ -288,6 +293,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
+  const refreshCountries = useCallback(async () => {
+    setCountriesLoading(true);
+    setCountriesError(null);
+    try {
+      const data = await catalogApi.countries();
+      setCountries(
+        data.countries.map((country) => ({
+          ...country,
+          name: countryDisplayName(country.code, country.name),
+          flag: countryDisplayFlag(country.code, country.flag),
+        })),
+      );
+    } catch (error) {
+      setCountries([]);
+      setCountriesError(toErrorMessage(error));
+    } finally {
+      setCountriesLoading(false);
+    }
+  }, []);
+
   const refreshCatalog = useCallback(async () => {
     setCatalogLoading(true);
     try {
@@ -299,13 +324,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         limit: 24,
       });
       setCatalog(data.items);
-      setCountries(
-        data.countries.map((country) => ({
-          ...country,
-          name: countryDisplayName(country.code, country.name),
-          flag: countryDisplayFlag(country.code, country.flag),
-        })),
-      );
       setServices(data.services);
       setCatalogPage(1);
       setCatalogTotal(data.total);
@@ -540,6 +558,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     void refreshConfig();
   }, [refreshConfig]);
+
+  useEffect(() => {
+    void refreshCountries();
+  }, [refreshCountries]);
 
   useEffect(() => {
     void refreshCatalog();
@@ -910,7 +932,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const syncCatalog = async (): Promise<ActionResult> => {
     try {
       await adminApi.syncCatalog();
-      await Promise.all([refreshCatalog(), loadAdminData()]);
+      await Promise.all([refreshCatalog(), refreshCountries(), loadAdminData()]);
       return { success: true };
     } catch (error) {
       return { success: false, error: toErrorMessage(error) };
@@ -1014,6 +1036,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         appConfig,
         catalog,
         countries,
+        countriesLoading,
+        countriesError,
+        refreshCountries,
         services,
         catalogLoading,
         catalogLoadingMore,

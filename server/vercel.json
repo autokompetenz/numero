@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "npm install --include=dev",
+  "crons": [
+    {
+      "path": "/api/cron/poller",
+      "schedule": "0 3 * * *"
+    }
+  ]
+}

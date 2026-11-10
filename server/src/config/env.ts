@@ -36,7 +36,7 @@ const numberish = (fallback: number, min = 0) =>
 
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  APP_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  APP_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
   PORT: numberish(4000, 1),
   APP_URL: z.string().url().default('http://localhost:4000'),
   FRONTEND_URL: z.string().url().default('http://localhost:3000'),
@@ -44,6 +44,8 @@ const schema = z.object({
   TRUST_PROXY: numberish(0, 0),
 
   DATABASE_URL: z.string().min(1, 'DATABASE_URL est requis'),
+  DIRECT_URL: z.string().optional().default(''),
+  CRON_SECRET: z.string().optional().default(''),
 
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET doit contenir au moins 32 caractères'),
   ACCESS_TOKEN_TTL: z.string().default('15m'),
@@ -99,22 +101,37 @@ export const isProduction = env.NODE_ENV === 'production';
 export const isDevelopment = env.NODE_ENV === 'development';
 export const isTest = env.NODE_ENV === 'test';
 
+/**
+ * Un environnement « live » est un déploiement public réel.
+ * Vercel impose NODE_ENV=production aux fonctions, y compris en preview :
+ * on se base donc sur APP_ENV / VERCEL_ENV pour distinguer staging et live.
+ */
+export const isVercel = process.env.VERCEL === '1';
+export const isVercelPreview = process.env.VERCEL_ENV === 'preview';
+export const isStaging = env.APP_ENV === 'staging' || isVercelPreview;
+export const isLiveEnvironment = isProduction && !isStaging;
+/** Outils /api/dev et fournisseurs simulés : autorisés partout sauf en live. */
+export const devToolsEnabled = !isLiveEnvironment;
+
 export const corsOrigins = env.CORS_ORIGINS.split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
 
 // -----------------------------------------------------------------------------
-// Garde-fous : aucune simulation ne doit pouvoir tourner en production.
+// Garde-fous : aucune simulation ne doit pouvoir tourner en environnement live.
 // -----------------------------------------------------------------------------
 const productionErrors: string[] = [];
 
-if (isProduction) {
+if (isLiveEnvironment) {
   if (env.ULTRASMS_MODE === 'mock') {
-    productionErrors.push('ULTRASMS_MODE=mock est interdit en production.');
+    productionErrors.push('ULTRASMS_MODE=mock est interdit en environnement live.');
   }
-  if (env.PAYMENTS_MODE === 'mock') {
-    productionErrors.push('PAYMENTS_MODE=mock est interdit en production.');
+  if (env.PAYMENTS_MODE !== 'live') {
+    productionErrors.push('PAYMENTS_MODE doit être live en environnement live.');
   }
+}
+
+if (isProduction) {
   if (!env.COOKIE_SECURE) {
     productionErrors.push('COOKIE_SECURE doit être true en production (HTTPS obligatoire).');
   }
@@ -128,6 +145,15 @@ if (isProduction) {
   }
   if (env.APP_URL.startsWith('http://')) {
     productionErrors.push('APP_URL doit utiliser HTTPS en production.');
+  }
+}
+
+if (isVercel) {
+  if (!env.CRON_SECRET) {
+    productionErrors.push('CRON_SECRET est requis pour le poller Vercel.');
+  }
+  if (!env.DIRECT_URL) {
+    productionErrors.push('DIRECT_URL est requis pour les migrations Prisma sur Neon.');
   }
 }
 

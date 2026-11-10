@@ -23,6 +23,20 @@ export interface CatalogQuery {
 const DEFAULT_PAGE_SIZE = 24;
 const MAX_PAGE_SIZE = 60;
 
+export async function listEnabledCountries() {
+  const countries = await prisma.country.findMany({
+    where: { enabled: true },
+    orderBy: [{ popular: 'desc' }, { name: 'asc' }],
+  });
+  return countries.map((country) => ({
+    code: country.code,
+    name: country.name,
+    flag: country.flag,
+    prefix: country.prefix,
+    popular: country.popular,
+  }));
+}
+
 export interface CatalogEntryDto {
   id: string;
   countryCode: string;
@@ -91,7 +105,7 @@ export async function listCatalog(query: CatalogQuery) {
     ...(query.type ? { type: query.type } : {}),
   };
 
-  const [items, total, countryGroups, allServiceGroups, serviceOptionGroups, config, rates] =
+  const [items, total, allServiceGroups, serviceOptionGroups, config, rates] =
     await Promise.all([
       prisma.catalogItem.findMany({
         where,
@@ -100,10 +114,6 @@ export async function listCatalog(query: CatalogQuery) {
         take: limit,
       }),
       prisma.catalogItem.count({ where }),
-      prisma.catalogItem.groupBy({
-        by: ['countryCode'],
-        where: optionWhere,
-      }),
       prisma.catalogItem.groupBy({
         by: ['serviceId'],
         where: optionWhere,
@@ -120,13 +130,7 @@ export async function listCatalog(query: CatalogQuery) {
     ]);
 
   const [countries, services, serviceOptions] = await Promise.all([
-    prisma.country.findMany({
-      where: {
-        enabled: true,
-        code: { in: countryGroups.map((group) => group.countryCode) },
-      },
-      orderBy: { name: 'asc' },
-    }),
+    listEnabledCountries(),
     prisma.service.findMany({
       where: {
         enabled: true,
@@ -185,13 +189,7 @@ export async function listCatalog(query: CatalogQuery) {
   }
 
   return {
-    countries: countries.map((country) => ({
-      code: country.code,
-      name: country.name,
-      flag: country.flag,
-      prefix: country.prefix,
-      popular: country.popular,
-    })),
+    countries,
     services: services.map((service) => ({
       id: service.id,
       name: service.name,

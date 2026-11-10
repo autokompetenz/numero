@@ -1,4 +1,4 @@
-import { env, isProduction } from '../../config/env.js';
+import { env, isLiveEnvironment } from '../../config/env.js';
 import { LiveUltraSmsProvider } from './live.js';
 import { MockUltraSmsProvider } from './mock.js';
 import { UltraSmsProvider } from './types.js';
@@ -9,9 +9,9 @@ export function getUltraSmsProvider(): UltraSmsProvider {
   if (instance) return instance;
 
   if (env.ULTRASMS_MODE === 'mock') {
-    if (isProduction) {
+    if (isLiveEnvironment) {
       // Ceinture et bretelles : env.ts bloque déjà ce cas au démarrage.
-      throw new Error('Le mode mock Ultra SMS est interdit en production.');
+      throw new Error('Le mode mock Ultra SMS est interdit en environnement live.');
     }
     instance = new MockUltraSmsProvider();
     return instance;

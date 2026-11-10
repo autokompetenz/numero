@@ -14,6 +14,8 @@ server/dist/
 !.env.example
 !.env.production.example
 !.env.test.example
+.vercel/
+server/.vercel/
 
 # Données locales
 .data/
@@ -41,3 +43,5 @@ coverage/
 # Divers
 *.local
 .tmp/
+.vercel
+.env*
