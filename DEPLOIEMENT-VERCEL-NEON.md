@@ -18,8 +18,8 @@ Navigateur ──► numero-pearl.vercel.app
                     └── /api/*       → Express ──► Neon PostgreSQL (pooled)
 ```
 
-> L'ancien projet séparé `numero-api` n'est plus utilisé. Il peut être supprimé
-> depuis le dashboard Vercel une fois le projet fusionné validé.
+> L'ancien projet séparé `numero-api` a été supprimé. Le seul projet actif est
+> `numero`, qui sert le front et l'API sur la même origine.
 
 ---
 

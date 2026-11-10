@@ -45,8 +45,8 @@ Navigateur ──► React/Vite (src/) ──► API Express (server/src/) ─�
 | `scripts/e2e-api.sh` | Recette bout-en-bout de l'API |
 | `scripts/ui-check.cjs` | Recette navigateur (Chrome headless + Playwright) |
 | `scripts/set-keys.sh` | Saisie masquée des clés fournisseur dans `.env` |
-| `vercel.json` | Projet front : rewrite `/api` et fallback SPA |
-| `server/vercel.json` | Projet API : build, cron du poller |
+| `app.ts` | Point d'entrée Express du projet Vercel unique |
+| `vercel.json` | Projet unique : preset Express, build, rewrite SPA, cron |
 | `DEPLOIEMENT-VERCEL-NEON.md` | Guide de déploiement front + API + Neon |
 
 ---
@@ -356,8 +356,8 @@ vercel --prod --yes
 > utilise `0 3 * * *` ; le workflow GitHub Actions
 > `.github/workflows/poller.yml` complète toutes les 5 minutes.
 >
-> L'ancien projet `numero-api` n'est plus nécessaire : le supprimer depuis le
-> dashboard Vercel une fois le projet fusionné validé.
+> L'ancien projet `numero-api` a été supprimé : le seul projet Vercel actif est
+> `numero` (`numero-pearl.vercel.app`), qui sert le front et l'API.
 
 ---
 
