@@ -1,0 +1,427 @@
+// Numivo — schéma de base de données
+// Les montants sont stockés en unités mineures (entiers) :
+//   XOF : 1 unité = 1 XOF (pas de décimales)
+//   EUR / USD : 1 unité = 1 centime
+// Les taux sont stockés en Decimal pour éviter les flottants.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CLIENT
+  ADMIN
+  SUPPORT
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum Currency {
+  XOF
+  EUR
+  USD
+}
+
+enum NumberType {
+  TEMPORARY
+  RENTAL
+}
+
+enum ServiceCategory {
+  social
+  ai
+  messaging
+  tech
+  fintech
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  PROCESSING
+  COMPLETED
+  CANCELLED
+  REFUNDED
+  FAILED
+}
+
+enum PaymentMethod {
+  MOBILE_MONEY
+  CARD
+  WALLET
+}
+
+enum PaymentProvider {
+  FEDAPAY
+  KKIAPAY
+  CARD_GATEWAY
+  WALLET
+  MOCK
+}
+
+enum PaymentPurpose {
+  ORDER
+  TOPUP
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  DECLINED
+  CANCELED
+  REFUNDED
+  FAILED
+}
+
+enum WalletTransactionType {
+  DEPOSIT
+  PURCHASE
+  REFUND
+  ADJUSTMENT
+}
+
+enum WalletTransactionStatus {
+  CONFIRMED
+  PENDING
+  CANCELLED
+}
+
+enum RefundStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum ProviderStatus {
+  ACTIVE
+  INACTIVE
+  DEGRADED
+}
+
+enum WebhookStatus {
+  RECEIVED
+  PROCESSED
+  FAILED
+  IGNORED
+}
+
+enum MobileMoneyOperator {
+  MTN
+  MOOV
+  CELTIIS
+}
+
+model User {
+  id                String     @id @default(uuid())
+  email             String     @unique
+  passwordHash      String
+  name              String
+  role              UserRole   @default(CLIENT)
+  status            UserStatus @default(ACTIVE)
+  country           String?
+  phone             String?
+  preferredCurrency Currency   @default(XOF)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  wallets       Wallet[]
+  refreshTokens RefreshToken[]
+  orders        Order[]
+  auditLogs     AuditLog[]
+
+  @@index([role, status])
+}
+
+model RefreshToken {
+  id                  String    @id @default(uuid())
+  userId              String
+  tokenHash           String    @unique
+  expiresAt           DateTime
+  revokedAt           DateTime?
+  replacedByTokenHash String?
+  ipAddress           String?
+  userAgent           String?
+  createdAt           DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model Wallet {
+  id           String   @id @default(uuid())
+  userId       String
+  currency     Currency
+  balanceMinor BigInt   @default(0)
+  version      Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions WalletTransaction[]
+  payments     Payment[]
+
+  @@unique([userId, currency])
+  @@index([currency])
+}
+
+model WalletTransaction {
+  id                  String                  @id @default(uuid())
+  walletId            String
+  type                WalletTransactionType
+  status              WalletTransactionStatus @default(CONFIRMED)
+  amountMinor         BigInt
+  balanceAfterMinor   BigInt
+  currency            Currency
+  reference           String                  @unique
+  idempotencyKey      String                  @unique
+  description         String
+  metadata            Json?
+  createdAt           DateTime                @default(now())
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
+
+  @@index([walletId, createdAt])
+  @@index([type, createdAt])
+}
+
+model Country {
+  code      String  @id
+  name      String
+  prefix    String
+  flag      String
+  popular   Boolean @default(false)
+  enabled   Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  catalogItems CatalogItem[]
+}
+
+model Service {
+  id           String          @id
+  name         String
+  iconName     String
+  category     ServiceCategory
+  popular      Boolean         @default(false)
+  enabled      Boolean         @default(true)
+  providerCode String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  catalogItems CatalogItem[]
+
+  @@index([providerCode])
+}
+
+model CatalogItem {
+  id                   String      @id @default(uuid())
+  countryCode          String
+  serviceId            String
+  type                 NumberType  @default(TEMPORARY)
+  supplierCostXofMinor BigInt
+  supplierPriceMinor   BigInt?
+  supplierCurrency     String?
+  providerProductId    String?
+  availableCount       Int         @default(0)
+  enabled              Boolean     @default(true)
+  lastSyncedAt         DateTime?
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+
+  country Country @relation(fields: [countryCode], references: [code], onDelete: Restrict)
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  orders  Order[]
+
+  @@unique([countryCode, serviceId, type])
+  @@index([enabled, availableCount])
+  @@index([countryCode, enabled, availableCount])
+  @@index([serviceId, enabled, availableCount])
+  @@index([type, enabled, availableCount])
+}
+
+model Provider {
+  id        String         @id @default(uuid())
+  name      String         @unique
+  type      String
+  status    ProviderStatus @default(INACTIVE)
+  config    Json?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+}
+
+model Order {
+  id                      String          @id @default(uuid())
+  reference               String          @unique
+  userId                  String
+  catalogItemId           String?
+  provider                String
+  providerOrderId         String?
+  countryCode             String
+  serviceId               String
+  type                    NumberType
+  phoneNumber             String?
+  currency                Currency
+  supplierCostXofMinor    BigInt
+  supplierCostCurrency    String          @default("XOF")
+  exchangeRateUsed        Decimal         @default(1) @db.Decimal(18, 8)
+  sellingPriceXofMinor    BigInt
+  sellingPriceCurrencyMinor BigInt
+  paymentFeeMinor         BigInt
+  targetMarginXof         Int
+  actualMarginXof         BigInt
+  paymentMethod           PaymentMethod
+  paymentProvider         PaymentProvider
+  mobileMoneyOperator     MobileMoneyOperator?
+  mobileMoneyPhone        String?
+  status                  OrderStatus     @default(PENDING_PAYMENT)
+  idempotencyKey          String?         @unique
+  checkoutUrl             String?
+  failureReason           String?
+  cancellationReason      String?
+  expiresAt               DateTime
+  paidAt                  DateTime?
+  completedAt             DateTime?
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
+
+  user        User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  catalogItem CatalogItem?  @relation(fields: [catalogItemId], references: [id], onDelete: SetNull)
+  smsMessages OrderSms[]
+  payments    Payment[]
+  refunds     Refund[]
+
+  @@index([userId, createdAt])
+  @@index([status, expiresAt])
+  @@index([paymentProvider, createdAt])
+}
+
+model OrderSms {
+  id              String   @id @default(uuid())
+  orderId         String
+  providerSmsId   String?
+  sender          String
+  messageText     String
+  extractedOtpCode String?
+  receivedAt      DateTime
+  raw             Json?
+  createdAt       DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, providerSmsId])
+  @@index([orderId, receivedAt])
+}
+
+model Payment {
+  id                  String          @id @default(uuid())
+  orderId             String?
+  walletId            String?
+  purpose             PaymentPurpose  @default(ORDER)
+  provider            PaymentProvider
+  providerTransactionId String?       @unique
+  reference           String          @unique
+  paymentMethod       PaymentMethod
+  amountMinor         BigInt
+  currency            Currency
+  status              PaymentStatus   @default(PENDING)
+  idempotencyKey      String          @unique
+  checkoutUrl         String?
+  paidAt              DateTime?
+  failureReason       String?
+  metadata            Json?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  order   Order?   @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  wallet  Wallet?  @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  refunds Refund[]
+
+  @@index([status, createdAt])
+  @@index([walletId])
+}
+
+model Refund {
+  id               String       @id @default(uuid())
+  paymentId        String
+  orderId          String?
+  amountMinor      BigInt
+  currency         Currency
+  reason           String
+  providerRefundId String?
+  status           RefundStatus @default(PENDING)
+  createdAt        DateTime     @default(now())
+  completedAt      DateTime?
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([paymentId])
+  @@index([status, createdAt])
+}
+
+model ExchangeRate {
+  id            String   @id @default(uuid())
+  baseCurrency  Currency
+  quoteCurrency Currency
+  rate          Decimal  @db.Decimal(18, 8)
+  source        String
+  validAt       DateTime
+  createdAt     DateTime @default(now())
+
+  @@unique([baseCurrency, quoteCurrency, validAt])
+  @@index([baseCurrency, quoteCurrency, validAt])
+}
+
+model PricingConfig {
+  id                    String   @id @default("default")
+  targetMarginXof       Int      @default(2000)
+  paymentRateMobileMoney Decimal @default(0.018) @db.Decimal(8, 6)
+  paymentRateCard       Decimal  @default(0.036) @db.Decimal(8, 6)
+  paymentRateWallet     Decimal  @default(0) @db.Decimal(8, 6)
+  fixedPaymentFeeXof    Int      @default(0)
+  fxFeeRate             Decimal  @default(0) @db.Decimal(8, 6)
+  roundingStepXof       Int      @default(100)
+  updatedAt             DateTime @updatedAt
+  updatedBy             String?
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String
+  metadata   Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([actorId, createdAt])
+  @@index([entityType, entityId])
+}
+
+model WebhookEvent {
+  id          String        @id @default(uuid())
+  provider    String
+  eventId     String
+  eventType   String
+  payload     Json
+  status      WebhookStatus @default(RECEIVED)
+  error       String?
+  processedAt DateTime?
+  createdAt   DateTime      @default(now())
+
+  @@unique([provider, eventId])
+  @@index([provider, createdAt])
+}

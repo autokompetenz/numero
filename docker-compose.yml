@@ -1,0 +1,27 @@
+# PostgreSQL local pour Numivo.
+# Démarrer : docker compose up -d
+# (Podman est également pris en charge : podman compose up -d)
+services:
+  postgres:
+    image: docker.io/library/postgres:17-alpine
+    container_name: numivo-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: numivo
+      POSTGRES_PASSWORD: numivo_dev_password
+      POSTGRES_DB: numivo
+      TZ: UTC
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - numivo_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U numivo -d numivo"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  numivo_pgdata:
+    name: numivo_pgdata

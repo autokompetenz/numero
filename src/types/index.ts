@@ -1,17 +1,28 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
+export type Currency = 'XOF' | 'EUR' | 'USD';
 
 export type UserRole = 'VISITOR' | 'CLIENT' | 'ADMIN' | 'SUPPORT';
 
-export type Currency = 'XOF' | 'EUR' | 'USD';
+export type UserStatus = 'ACTIVE' | 'SUSPENDED';
+
+export interface UserProfile {
+  id: string;
+  name: string;
+  email: string;
+  role: Exclude<UserRole, 'VISITOR'>;
+  country: string | null;
+  phone?: string | null;
+  preferredCurrency: Currency;
+  status?: UserStatus;
+  createdAt: string;
+}
+
+export type NumberType = 'TEMPORARY' | 'RENTAL';
 
 export type PaymentMethod = 'MOBILE_MONEY' | 'CARD' | 'WALLET';
 
-export type MobileMoneyOperator = 'MTN' | 'MOOV' | 'CELTIIS' | 'ORANGE' | 'WAVE';
+export type PaymentProvider = 'FEDAPAY' | 'KKIAPAY' | 'CARD_GATEWAY' | 'WALLET' | 'MOCK';
 
-export type PaymentGateway = 'FEDAPAY' | 'KKIAPAY' | 'INTERNAL';
+export type MobileMoneyOperator = 'MTN' | 'MOOV' | 'CELTIIS';
 
 export type OrderStatus =
   | 'PENDING_PAYMENT'
@@ -19,163 +30,331 @@ export type OrderStatus =
   | 'PROCESSING'
   | 'COMPLETED'
   | 'CANCELLED'
-  | 'REFUNDED';
+  | 'REFUNDED'
+  | 'FAILED';
 
-export type WalletTransactionType =
-  | 'DEPOSIT'
-  | 'PURCHASE'
-  | 'REFUND'
-  | 'ADMIN_ADJUSTMENT';
+export type PaymentStatus = 'PENDING' | 'APPROVED' | 'DECLINED' | 'CANCELED' | 'REFUNDED' | 'FAILED';
 
-export interface User {
-  id: string;
-  email: string;
-  name: string;
-  role: UserRole;
-  phone?: string;
-  preferredCurrency: Currency;
-  createdAt: string;
-}
-
-export interface PricingConfig {
-  targetMarginXof: number; // e.g. 2000 XOF
-  paymentRateMomo: number; // e.g. 0.025 (2.5%)
-  paymentRateCard: number; // e.g. 0.036 (3.6%)
-  fixedPaymentFeeXof: number; // e.g. 0
-  fxFeeXof: number; // e.g. 0
-  roundingStepXof: number; // e.g. 100
-}
-
-export interface ExchangeRates {
-  EUR_TO_XOF: number; // ~655.957
-  USD_TO_XOF: number; // ~610.00
-  XOF_TO_EUR: number;
-  XOF_TO_USD: number;
-}
-
-export interface PriceCalculationResult {
-  supplierCostXof: number;
-  targetMarginXof: number;
-  paymentRate: number;
-  fixedPaymentFeeXof: number;
-  fxFeeXof: number;
-  rawPriceXof: number;
-  sellingPriceXof: number;
-  estimatedPaymentFeeXof: number;
-  estimatedNetMarginXof: number;
-  // Converted to target currency
-  displayCurrency: Currency;
-  displayPrice: number;
-  displayFormatted: string;
-  exchangeRateUsed: number;
-}
+export type PaymentPurpose = 'ORDER' | 'TOPUP';
 
 export interface Country {
-  code: string; // ISO 2 (e.g. 'BJ', 'CI', 'FR', 'US')
+  code: string;
   name: string;
   flag: string;
-  dialCode: string;
-  availableServicesCount: number;
-  supportedOperators: MobileMoneyOperator[];
-  isPopular?: boolean;
+  prefix: string;
+  popular?: boolean;
 }
 
 export interface ServiceItem {
   id: string;
   name: string;
-  category: 'social' | 'messaging' | 'ai' | 'finance' | 'transport' | 'entertainment' | 'other';
-  icon: string; // Icon identifier or name
-  baseSupplierCostXof: number; // Base cost from Ultra SMS
-  description: string;
-  successRate: number; // e.g. 98%
-  isHot?: boolean;
+  iconName: string;
+  category: 'social' | 'ai' | 'messaging' | 'tech' | 'fintech';
+  popular?: boolean;
+  providerCode?: string;
 }
 
-export interface SMSMessage {
+export interface CatalogItem {
+  id: string;
+  countryCode: string;
+  serviceId: string;
+  type: NumberType;
+  supplierCostXof: number;
+  availableCount: number;
+  enabled: boolean;
+  /** Prix de vente calculé par le serveur pour la devise demandée. */
+  sellingPriceXof: number;
+  sellingPriceMinor: number;
+  sellingPriceFormatted: string;
+  currency: Currency;
+  paymentMethod: PaymentMethod;
+  paymentFeeXof: number;
+  estimatedNetMarginXof: number;
+}
+
+export interface CatalogResponse {
+  countries: Country[];
+  services: ServiceItem[];
+  /** Nombre total de services ayant au moins une offre. */
+  serviceTotal: number;
+  /** Services réellement disponibles pour le pays demandé (ou tous). */
+  serviceOptions: ServiceItem[];
+  items: CatalogItem[];
+  page: number;
+  limit: number;
+  total: number;
+  hasMore: boolean;
+  currency: Currency;
+  paymentMethod: PaymentMethod;
+}
+
+export interface CatalogFilters {
+  countryCode?: string;
+  serviceId?: string;
+  type?: NumberType;
+  category?: string;
+  search?: string;
+}
+
+export interface PricingConfig {
+  targetMarginXof: number;
+  paymentRateMobileMoney: number;
+  paymentRateCard: number;
+  paymentRateWallet: number;
+  fixedPaymentFeeXof: number;
+  fxFeeRate: number;
+  roundingStepXof: number;
+}
+
+export interface ExchangeRates {
+  EUR_XOF: number;
+  USD_XOF: number;
+  EUR_USD: number;
+  source?: string;
+  validAt?: string;
+}
+
+export interface PriceBreakdown {
+  supplierCostXof: number;
+  targetMarginXof: number;
+  paymentFeeXof: number;
+  fxFeeXof: number;
+  rawPriceXof: number;
+  sellingPriceXof: number;
+  estimatedNetMarginXof: number;
+  currency: Currency;
+  sellingPriceMinor: number;
+  sellingPriceFormatted: string;
+  sellingPriceInCurrency: number;
+  rateApplied: number;
+  paymentRate: number;
+}
+
+export interface QuoteResponse {
+  item: {
+    id: string;
+    countryCode: string;
+    serviceId: string;
+    type: NumberType;
+  };
+  price: PriceBreakdown;
+}
+
+export interface SmsMessage {
   id: string;
   orderId: string;
   sender: string;
-  text: string;
-  extractedCode?: string;
+  messageText: string;
+  extractedOtpCode?: string | null;
   receivedAt: string;
+}
+
+export interface Payment {
+  id: string;
+  reference: string;
+  purpose: PaymentPurpose;
+  provider: PaymentProvider;
+  paymentMethod: PaymentMethod;
+  status: PaymentStatus;
+  amountMinor: number;
+  amount: number;
+  currency: Currency;
+  checkoutUrl: string | null;
+  providerTransactionId?: string | null;
+  orderId?: string | null;
+  orderReference?: string | null;
+  paidAt?: string | null;
+  failureReason?: string | null;
+  createdAt: string;
 }
 
 export interface Order {
   id: string;
-  orderNumber: string;
+  reference: string;
   userId: string;
-  userName: string;
-  userEmail: string;
+  userEmail?: string;
   countryCode: string;
   countryName: string;
+  prefix: string;
   serviceId: string;
   serviceName: string;
-  phoneNumber?: string;
+  phoneNumber?: string | null;
+  type: NumberType;
   currency: Currency;
-  // Financial breakdown
   supplierCostXof: number;
-  supplierCostMinor: number;
-  supplierCostCurrency: string;
-  exchangeRate: number;
+  exchangeRateUsed: number;
   sellingPriceXof: number;
-  sellingPriceMinor: number;
-  paymentMethod: PaymentMethod;
-  paymentOperator?: MobileMoneyOperator;
+  sellingPriceCurrency: number;
   paymentFeeXof: number;
-  targetMarginXof: number;
   actualMarginXof: number;
+  paymentMethod: PaymentMethod;
+  paymentProvider: PaymentProvider;
+  mobileMoneyOperator?: MobileMoneyOperator | null;
+  mobileMoneyPhone?: string | null;
   status: OrderStatus;
-  provider: 'NUM_FAST' | 'ULTRA_SMS';
-  providerOrderId?: string;
+  checkoutUrl?: string | null;
+  failureReason?: string | null;
+  cancellationReason?: string | null;
   createdAt: string;
+  paidAt?: string | null;
   expiresAt: string;
-  completedAt?: string;
-  smsMessages: SMSMessage[];
-  idempotencyKey: string;
+  completedAt?: string | null;
+  smsMessages: SmsMessage[];
+  payment?: Payment | null;
 }
 
-export interface Wallet {
-  id: string;
-  userId: string;
-  currency: Currency;
-  balanceMinor: number; // In minor units (XOF has 0 decimals, EUR/USD have 2 decimals)
-  updatedAt: string;
-}
+export type WalletTransactionType = 'DEPOSIT' | 'PURCHASE' | 'REFUND' | 'ADJUSTMENT';
 
 export interface WalletTransaction {
   id: string;
-  walletId: string;
-  userId: string;
-  type: WalletTransactionType;
-  amountMinor: number;
-  currency: Currency;
-  status: 'COMPLETED' | 'PENDING' | 'REJECTED';
   reference: string;
+  date: string;
+  type: WalletTransactionType;
+  currency: Currency;
+  amount: number;
+  amountMinor?: number;
+  balanceAfter: number;
+  balanceAfterMinor?: number;
+  status: 'CONFIRMED' | 'PENDING' | 'CANCELLED';
   description: string;
-  idempotencyKey: string;
-  createdAt: string;
+  paymentMethod?: string;
+  idempotencyKey?: string | null;
+}
+
+export interface WalletSummary {
+  currency: Currency;
+  balanceMinor: number;
+  balance: number;
+  updatedAt: string;
+}
+
+export interface UserWallet {
+  userId: string;
+  balances: Record<Currency, number>;
+  transactions: WalletTransaction[];
 }
 
 export interface AuditLog {
   id: string;
-  actorId: string;
-  actorName: string;
-  actorRole: UserRole;
+  timestamp: string;
+  actor: string;
   action: string;
-  entityType: 'ORDER' | 'PRICING' | 'WALLET' | 'CATALOG' | 'PROVIDER' | 'REFUND';
+  entityType: string;
   entityId: string;
-  metadata: Record<string, any>;
-  ipAddress?: string;
-  createdAt: string;
+  metadata?: string | null;
+  ipAddress?: string | null;
 }
 
-export interface ProviderSetting {
+export interface UltraSmsProviderConfig {
+  apiKey: string;
+  apiEndpoint: string;
+  isSandbox: boolean;
+  connected: boolean;
+  balanceXof: number;
+  balanceUsd?: number;
+  mode?: string;
+  lastPing: string;
+}
+
+export interface AppConfig {
+  pricing: PricingConfig;
+  exchangeRates: ExchangeRates;
+  payments: {
+    mode: 'mock' | 'sandbox' | 'live';
+    currencies: Currency[];
+    minTopUpXof: number;
+    maxTopUpXof: number;
+  };
+  ultrasms: {
+    mode: 'mock' | 'live';
+  };
+}
+
+export interface AuthResponse {
+  user: UserProfile;
+  accessToken: string;
+}
+
+export interface AdminProviderBalance {
+  balanceCents: number;
+  balance: string;
+  currency: string;
+}
+
+export interface AdminStats {
+  totals: {
+    users: number;
+    orders: number;
+    completed: number;
+    pendingPayment: number;
+    processing: number;
+    refunds: number;
+    revenueXof: number;
+    supplierCostXof: number;
+    marginXof: number;
+  };
+  walletLiabilitiesXof: number;
+  daily: { day: string; count: number; revenueXof: number }[];
+  recentOrders: Order[];
+  manualRefunds: {
+    id: string;
+    orderReference: string | null;
+    amountMinor: number;
+    currency: Currency;
+    reason: string | null;
+    createdAt: string;
+    provider: PaymentProvider;
+  }[];
+  provider: {
+    name: string;
+    mode: string;
+    balance: AdminProviderBalance | null;
+  };
+}
+
+export interface AdminCatalogItem {
+  id: string;
+  countryCode: string;
+  countryName: string;
+  prefix: string;
+  serviceId: string;
+  serviceName: string;
+  type: NumberType;
+  supplierCostXof: number;
+  supplierPriceMinor: number | null;
+  supplierCurrency: Currency;
+  availableCount: number;
+  enabled: boolean;
+  lastSyncedAt: string | null;
+}
+
+export interface AdminCatalogResponse {
+  items: AdminCatalogItem[];
+  page: number;
+  limit: number;
+  total: number;
+  hasMore: boolean;
+}
+
+export interface AdminUser {
   id: string;
   name: string;
-  type: 'SMS' | 'PAYMENT';
-  status: 'ACTIVE' | 'TEST' | 'INACTIVE';
-  apiKeyMasked: string;
-  endpointUrl: string;
-  balance?: string;
-  lastChecked: string;
+  email: string;
+  role: Exclude<UserRole, 'VISITOR'>;
+  status: UserStatus;
+  country: string | null;
+  phone: string | null;
+  preferredCurrency: Currency;
+  createdAt: string;
+  ordersCount: number;
+  wallets: { currency: Currency; balanceMinor: number }[];
+}
+
+export interface Paginated<T> {
+  total: number;
+  page: number;
+  limit: number;
+  users?: T[];
+  orders?: T[];
+  logs?: T[];
 }
